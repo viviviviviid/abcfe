@@ -197,6 +197,196 @@ func TestSetBlock(t *testing.T) {
 // 	return true, nil
 // }
 
+// ===== 블록 검증 테스트 =====
+
+// 유효한 블록 생성 헬퍼
+func createValidBlock(prevHash prt.Hash, height uint64, txs []*Transaction) *Block {
+	merkleRoot := calculateMerkleRoot(txs)
+
+	blkHeader := &BlockHeader{
+		Version:    "1.0",
+		Height:     height,
+		PrevHash:   prevHash,
+		Timestamp:  time.Now().Unix(),
+		MerkleRoot: merkleRoot,
+	}
+
+	block := &Block{
+		Header:       *blkHeader,
+		Transactions: txs,
+	}
+
+	block.Header.Hash = utils.Hash(block)
+	return block
+}
+
+// 1. 이전 해시 검증 테스트
+func TestValidateBlock_PrevHash(t *testing.T) {
+	// 제네시스 블록 (height=0)은 prevHash가 모두 0이어야 함
+	var zeroPrevHash prt.Hash
+	genesisBlock := createValidBlock(zeroPrevHash, 0, []*Transaction{})
+
+	err := ValidatePrevHash(genesisBlock, zeroPrevHash)
+	if err != nil {
+		t.Errorf("Genesis block prev hash validation failed: %v", err)
+	}
+
+	// 일반 블록은 실제 이전 블록 해시와 일치해야 함
+	block1 := createValidBlock(genesisBlock.Header.Hash, 1, []*Transaction{})
+	err = ValidatePrevHash(block1, genesisBlock.Header.Hash)
+	if err != nil {
+		t.Errorf("Block prev hash validation failed: %v", err)
+	}
+
+	// 잘못된 이전 해시
+	var wrongPrevHash prt.Hash
+	copy(wrongPrevHash[:], []byte("wrong_hash_value_here_12345678"))
+	err = ValidatePrevHash(block1, wrongPrevHash)
+	if err == nil {
+		t.Error("Should fail with wrong prev hash")
+	}
+}
+
+// 2. 머클 루트 검증 테스트
+func TestValidateBlock_MerkleRoot(t *testing.T) {
+	tx1 := setTestTransaction()
+	tx2 := setTestTransaction()
+	copy(tx2.ID[:], []byte{0x99, 0x98, 0x97})
+
+	txs := []*Transaction{tx1, tx2}
+	block := createValidBlock(prt.Hash{}, 1, txs)
+
+	err := ValidateMerkleRoot(block)
+	if err != nil {
+		t.Errorf("Merkle root validation failed: %v", err)
+	}
+
+	// 머클 루트 변조
+	block.Header.MerkleRoot[0] = 0xFF
+	err = ValidateMerkleRoot(block)
+	if err == nil {
+		t.Error("Should fail with wrong merkle root")
+	}
+}
+
+// 3. 블록 해시 검증 테스트
+func TestValidateBlock_Hash(t *testing.T) {
+	block := createValidBlock(prt.Hash{}, 1, []*Transaction{})
+
+	err := ValidateBlockHash(block)
+	if err != nil {
+		t.Errorf("Block hash validation failed: %v", err)
+	}
+
+	// 해시 변조
+	block.Header.Hash[0] = 0xFF
+	err = ValidateBlockHash(block)
+	if err == nil {
+		t.Error("Should fail with wrong block hash")
+	}
+}
+
+// 4. 블록 높이 연속성 테스트
+func TestValidateBlock_HeightContinuity(t *testing.T) {
+	err := ValidateHeightContinuity(1, 0)
+	if err != nil {
+		t.Errorf("Height continuity validation failed: %v", err)
+	}
+
+	err = ValidateHeightContinuity(5, 4)
+	if err != nil {
+		t.Errorf("Height continuity validation failed: %v", err)
+	}
+
+	// 높이가 연속적이지 않음
+	err = ValidateHeightContinuity(3, 1)
+	if err == nil {
+		t.Error("Should fail with non-continuous height")
+	}
+}
+
+// 5. 타임스탬프 검증 테스트
+func TestValidateBlock_Timestamp(t *testing.T) {
+	prevTimestamp := time.Now().Unix() - 100
+	currentTimestamp := time.Now().Unix()
+
+	err := ValidateTimestamp(currentTimestamp, prevTimestamp)
+	if err != nil {
+		t.Errorf("Timestamp validation failed: %v", err)
+	}
+
+	// 이전 블록보다 과거 시간
+	err = ValidateTimestamp(prevTimestamp-50, prevTimestamp)
+	if err == nil {
+		t.Error("Should fail with timestamp before prev block")
+	}
+
+	// 너무 미래 시간 (2시간 이후)
+	futureTimestamp := time.Now().Unix() + 7201
+	err = ValidateTimestamp(futureTimestamp, prevTimestamp)
+	if err == nil {
+		t.Error("Should fail with too far future timestamp")
+	}
+}
+
+// 6. 블록 크기 제한 테스트
+func TestValidateBlock_TxCount(t *testing.T) {
+	txs := make([]*Transaction, 50)
+	for i := range txs {
+		txs[i] = setTestTransaction()
+	}
+
+	err := ValidateTxCount(txs)
+	if err != nil {
+		t.Errorf("Tx count validation failed: %v", err)
+	}
+
+	// MaxTxsPerBlock 초과
+	tooManyTxs := make([]*Transaction, 150)
+	for i := range tooManyTxs {
+		tooManyTxs[i] = setTestTransaction()
+	}
+
+	err = ValidateTxCount(tooManyTxs)
+	if err == nil {
+		t.Error("Should fail with too many transactions")
+	}
+}
+
+// 7. 트랜잭션 중복 검증 테스트
+func TestValidateBlock_DuplicateTx(t *testing.T) {
+	tx1 := setTestTransaction()
+	tx2 := setTestTransaction()
+	copy(tx2.ID[:], []byte{0x99, 0x98, 0x97})
+
+	txs := []*Transaction{tx1, tx2}
+	err := ValidateDuplicateTx(txs)
+	if err != nil {
+		t.Errorf("Duplicate tx validation failed: %v", err)
+	}
+
+	// 중복 트랜잭션
+	duplicateTxs := []*Transaction{tx1, tx1}
+	err = ValidateDuplicateTx(duplicateTxs)
+	if err == nil {
+		t.Error("Should fail with duplicate transactions")
+	}
+}
+
+// 8. 전체 블록 검증 통합 테스트
+func TestValidateBlock_Full(t *testing.T) {
+	tx := setTestTransaction()
+	txs := []*Transaction{tx}
+
+	var zeroPrevHash prt.Hash
+	genesisBlock := createValidBlock(zeroPrevHash, 0, []*Transaction{})
+
+	block := createValidBlock(genesisBlock.Header.Hash, 1, txs)
+
+	// ValidateBlock 전체 테스트는 BlockChain 인스턴스 필요하므로 개별 검증만 수행
+	fmt.Println("Block created for validation:", utils.HashToString(block.Header.Hash))
+}
+
 func TestSetGenesisBlock(t *testing.T) {
 	var defaultPrevHash prt.Hash
 

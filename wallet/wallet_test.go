@@ -180,3 +180,140 @@ func TestLoadWallet(t *testing.T) {
 
 	fmt.Printf("지갑이 성공적으로 로드되었습니다: %v\n", utils.AddressToString(wm.Wallet.Accounts[0].Address))
 }
+
+// ===== 서명/검증 테스트 =====
+
+// 데이터 서명 및 검증 테스트
+func TestSignAndVerify(t *testing.T) {
+	wm := NewWalletManager("./resource/wallet")
+	_, err := wm.CreateWallet()
+	if err != nil {
+		t.Fatalf("Failed to create wallet: %v", err)
+	}
+
+	// 개인키, 공개키 가져오기
+	privateKey, err := wm.GetCurrentPrivateKey()
+	if err != nil {
+		t.Fatalf("Failed to get private key: %v", err)
+	}
+
+	publicKey, err := wm.GetCurrentPublicKey()
+	if err != nil {
+		t.Fatalf("Failed to get public key: %v", err)
+	}
+
+	// 테스트 데이터
+	testData := []byte("test transaction data for signing")
+
+	// 서명
+	sig, err := crypto.SignData(privateKey, testData)
+	if err != nil {
+		t.Fatalf("Failed to sign data: %v", err)
+	}
+
+	// 검증
+	valid := crypto.VerifySignature(publicKey, testData, sig)
+	if !valid {
+		t.Error("Signature verification failed")
+	}
+
+	fmt.Printf("Signature valid: %t\n", valid)
+}
+
+// 잘못된 데이터로 검증 실패 테스트
+func TestSignAndVerify_WrongData(t *testing.T) {
+	wm := NewWalletManager("./resource/wallet")
+	_, err := wm.CreateWallet()
+	if err != nil {
+		t.Fatalf("Failed to create wallet: %v", err)
+	}
+
+	privateKey, err := wm.GetCurrentPrivateKey()
+	if err != nil {
+		t.Fatalf("Failed to get private key: %v", err)
+	}
+
+	publicKey, err := wm.GetCurrentPublicKey()
+	if err != nil {
+		t.Fatalf("Failed to get public key: %v", err)
+	}
+
+	// 원본 데이터로 서명
+	originalData := []byte("original data")
+	sig, err := crypto.SignData(privateKey, originalData)
+	if err != nil {
+		t.Fatalf("Failed to sign data: %v", err)
+	}
+
+	// 다른 데이터로 검증 시도 -> 실패해야 함
+	wrongData := []byte("wrong data")
+	valid := crypto.VerifySignature(publicKey, wrongData, sig)
+	if valid {
+		t.Error("Should fail with wrong data")
+	}
+
+	fmt.Printf("Correctly rejected wrong data: %t\n", !valid)
+}
+
+// 다른 키로 검증 실패 테스트
+func TestSignAndVerify_WrongKey(t *testing.T) {
+	wm1 := NewWalletManager("./resource/wallet1")
+	_, err := wm1.CreateWallet()
+	if err != nil {
+		t.Fatalf("Failed to create wallet1: %v", err)
+	}
+
+	wm2 := NewWalletManager("./resource/wallet2")
+	_, err = wm2.CreateWallet()
+	if err != nil {
+		t.Fatalf("Failed to create wallet2: %v", err)
+	}
+
+	// wallet1의 개인키로 서명
+	privateKey1, _ := wm1.GetCurrentPrivateKey()
+	testData := []byte("test data")
+	sig, err := crypto.SignData(privateKey1, testData)
+	if err != nil {
+		t.Fatalf("Failed to sign data: %v", err)
+	}
+
+	// wallet2의 공개키로 검증 시도 -> 실패해야 함
+	publicKey2, _ := wm2.GetCurrentPublicKey()
+	valid := crypto.VerifySignature(publicKey2, testData, sig)
+	if valid {
+		t.Error("Should fail with wrong public key")
+	}
+
+	fmt.Printf("Correctly rejected wrong key: %t\n", !valid)
+}
+
+// 바이트 공개키로 검증 테스트
+func TestVerifyWithBytes(t *testing.T) {
+	wm := NewWalletManager("./resource/wallet")
+	_, err := wm.CreateWallet()
+	if err != nil {
+		t.Fatalf("Failed to create wallet: %v", err)
+	}
+
+	privateKey, _ := wm.GetCurrentPrivateKey()
+	account := wm.Wallet.Accounts[0]
+
+	testData := []byte("test data for bytes verification")
+
+	// 서명
+	sig, err := crypto.SignData(privateKey, testData)
+	if err != nil {
+		t.Fatalf("Failed to sign data: %v", err)
+	}
+
+	// 바이트 공개키로 검증
+	valid, err := crypto.VerifySignatureWithBytes(account.PublicKey, testData, sig)
+	if err != nil {
+		t.Fatalf("Failed to verify: %v", err)
+	}
+	if !valid {
+		t.Error("Signature verification with bytes failed")
+	}
+
+	fmt.Printf("Bytes verification valid: %t\n", valid)
+}

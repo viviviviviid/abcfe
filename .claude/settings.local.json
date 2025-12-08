@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go test:*)",
+      "Bash(/usr/local/go/bin/go test:*)",
+      "Bash(export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin)",
+      "Bash(go build:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

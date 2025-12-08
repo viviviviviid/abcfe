@@ -244,9 +244,7 @@ func (p *BlockChain) GetBlockByHash(hash prt.Hash) (*Block, error) {
 	return &block, nil
 }
 
-func (p *BlockChain) ValidateBlock(block Block) (bool, error) {
-	panic("Not Developed Yet")
-}
+// ValidateBlock은 validate.go로 이동됨
 
 // BlockToJSON 블록을 JSON 형식으로 변환
 func blockToJSON(block interface{}) ([]byte, error) {

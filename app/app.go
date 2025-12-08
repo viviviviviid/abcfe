@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -14,15 +13,13 @@ import (
 	"github.com/abcfe/abcfe-node/common/crypto"
 	"github.com/abcfe/abcfe-node/common/logger"
 	conf "github.com/abcfe/abcfe-node/config"
+	"github.com/abcfe/abcfe-node/consensus"
 	"github.com/abcfe/abcfe-node/core"
+	"github.com/abcfe/abcfe-node/p2p"
 	"github.com/abcfe/abcfe-node/storage"
 	"github.com/abcfe/abcfe-node/wallet"
 	"github.com/syndtr/goleveldb/leveldb"
 )
-
-// var port = flag.Int("port", 3000, "Set port of the server")
-var mode = flag.String("mode", "rest", "Choose between 'boot' and 'validator'")
-var configPath = flag.String("config", "", "Set path of the config file")
 
 type App struct {
 	stop       chan struct{}
@@ -31,10 +28,15 @@ type App struct {
 	BlockChain *core.BlockChain
 	restServer *rest.Server // 추가: REST API 서버 필드
 	Wallet     *wallet.WalletManager
+
+	// Consensus & P2P
+	Consensus       *consensus.Consensus
+	ConsensusEngine *consensus.ConsensusEngine
+	P2PService      *p2p.P2PService
 }
 
-func New() (*App, error) {
-	cfg, err := conf.NewConfig(*configPath)
+func New(configPath string) (*App, error) {
+	cfg, err := conf.NewConfig(configPath)
 	if err != nil {
 		fmt.Println("Failed to initialized application: ", err)
 		return nil, err
@@ -64,16 +66,72 @@ func New() (*App, error) {
 		return nil, err
 	}
 
+	// Consensus 초기화
+	cons, err := consensus.NewConsensus(cfg, db)
+	if err != nil {
+		logger.Error("Failed to initialize consensus: ", err)
+		return nil, err
+	}
+
+	// Consensus Engine 초기화
+	consEngine := consensus.NewConsensusEngine(cons, bc)
+
+	// P2P 초기화
+	p2pService, err := p2p.NewP2PService(
+		cfg.P2P.Address,
+		cfg.P2P.Port,
+		cfg.Common.NetworkID,
+		bc,
+	)
+	if err != nil {
+		logger.Error("Failed to initialize P2P: ", err)
+		return nil, err
+	}
+
 	app := &App{
-		stop:       make(chan struct{}),
-		Conf:       *cfg,
-		DB:         db,
-		BlockChain: bc,
-		Wallet:     wallet,
+		stop:            make(chan struct{}),
+		Conf:            *cfg,
+		DB:              db,
+		BlockChain:      bc,
+		Wallet:          wallet,
+		Consensus:       cons,
+		ConsensusEngine: consEngine,
+		P2PService:      p2pService,
 	}
 
 	// REST API 서버 초기화
 	app.restServer = rest.NewServer(app.Conf.Server.RestPort, app.BlockChain)
+
+	// 블록 커밋 시 P2P 브로드캐스트 콜백 설정
+	app.ConsensusEngine.SetBlockCommitCallback(func(block *core.Block) {
+		if app.P2PService != nil && app.P2PService.IsRunning() {
+			if err := app.P2PService.BroadcastBlock(block); err != nil {
+				logger.Error("Failed to broadcast block: ", err)
+			}
+		}
+	})
+
+	// P2P에서 블록 수신 시 처리 콜백 설정
+	app.P2PService.SetBlockHandler(func(block *core.Block) {
+		// 이미 있는 블록인지 확인
+		currentHeight, _ := app.BlockChain.GetLatestHeight()
+		if block.Header.Height <= currentHeight {
+			return
+		}
+
+		// 블록 검증 및 추가
+		if err := app.BlockChain.ValidateBlock(*block); err != nil {
+			logger.Error("Invalid received block: ", err)
+			return
+		}
+
+		if success, err := app.BlockChain.AddBlock(*block); !success || err != nil {
+			logger.Error("Failed to add received block: ", err)
+			return
+		}
+
+		logger.Info("Block synced from peer: height=", block.Header.Height)
+	})
 
 	return app, nil
 }
@@ -88,10 +146,94 @@ func (p *App) NewRest() error {
 	return nil
 }
 
+// StartConsensus 컨센서스 엔진 시작
+func (p *App) StartConsensus() error {
+	if p.ConsensusEngine == nil {
+		return fmt.Errorf("consensus engine not initialized")
+	}
+
+	if err := p.ConsensusEngine.Start(); err != nil {
+		return fmt.Errorf("failed to start consensus engine: %w", err)
+	}
+
+	logger.Info("Consensus engine started")
+	return nil
+}
+
+// StartP2P P2P 서비스 시작
+func (p *App) StartP2P() error {
+	if p.P2PService == nil {
+		return fmt.Errorf("p2p service not initialized")
+	}
+
+	if err := p.P2PService.Start(); err != nil {
+		return fmt.Errorf("failed to start P2P service: %w", err)
+	}
+
+	logger.Info("P2P service started on port ", p.Conf.P2P.Port)
+	return nil
+}
+
+// ConnectPeer 피어에 연결
+func (p *App) ConnectPeer(address string) error {
+	if p.P2PService == nil {
+		return fmt.Errorf("p2p service not initialized")
+	}
+
+	return p.P2PService.Connect(address)
+}
+
+// StartAll 모든 서비스 시작 (REST, P2P, Consensus)
+func (p *App) StartAll() error {
+	// REST API 시작
+	if err := p.NewRest(); err != nil {
+		return err
+	}
+
+	// P2P 시작
+	if err := p.StartP2P(); err != nil {
+		return err
+	}
+
+	// Boot 노드들에 연결
+	for _, bootNode := range p.Conf.P2P.BootNodes {
+		if err := p.ConnectPeer(bootNode); err != nil {
+			logger.Error("Failed to connect to boot node: ", bootNode, " error: ", err)
+		}
+	}
+
+	// BlockProducer인 경우에만 Consensus 시작
+	if p.Conf.Common.BlockProducer {
+		if err := p.StartConsensus(); err != nil {
+			return err
+		}
+	} else {
+		logger.Info("Running as sync-only node (not a block producer)")
+	}
+
+	logger.Info("All services started successfully")
+	return nil
+}
+
 // Cleanup 애플리케이션 정리
 func (p *App) Cleanup() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
+	// Consensus 엔진 종료
+	if p.ConsensusEngine != nil {
+		p.ConsensusEngine.Stop()
+		logger.Info("Consensus engine stopped")
+	}
+
+	// P2P 서비스 종료
+	if p.P2PService != nil {
+		if err := p.P2PService.Stop(); err != nil {
+			logger.Error("Error stopping P2P service:", err)
+		} else {
+			logger.Info("P2P service stopped")
+		}
+	}
 
 	// REST API 서버 종료
 	if p.restServer != nil {

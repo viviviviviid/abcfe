@@ -1,0 +1,38 @@
+[common]
+level = "local"
+serviceName = "abcfe-node-2"
+port = 3001
+mode = "validator"
+networkID = "abcfe-mainnet"
+blockProducer = false
+
+[logInfo]
+path = "./log/syslogs2/"
+maxAgeHour = 1440
+rotateHour = 24
+ProdTelKey = ""
+ProdChatId = 0
+DevTelKey = ""
+DevChatId = 0
+
+[db]
+path = "./resource/db2/"
+
+[wallet]
+path = "./resource/wallet2"
+
+[version]
+protocol = "1.0.0"
+transaction = "1.0.0"
+
+[genesis]
+SystemAddresses = ["17112bdf0c4b66abcb6b9651538a36da97031cca"]
+SystemBalances = [500000000]
+
+[server]
+RestPort = 8001
+
+[p2p]
+Address = "0.0.0.0"
+Port = 30304
+BootNodes = ["127.0.0.1:30303"]

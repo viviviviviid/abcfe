@@ -4,7 +4,12 @@
       "Bash(go test:*)",
       "Bash(/usr/local/go/bin/go test:*)",
       "Bash(export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin)",
-      "Bash(go build:*)"
+      "Bash(go build:*)",
+      "Bash(timeout 15 ./abcfed:*)",
+      "Bash(pkill:*)",
+      "Bash(chmod:*)",
+      "Bash(bash ./test_multi_node.sh:*)",
+      "Bash(./abcfed:*)"
     ],
     "deny": [],
     "ask": []

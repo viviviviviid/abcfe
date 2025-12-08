@@ -35,8 +35,9 @@ var (
 	pidFile = getPidFilePath()
 )
 
-func main() {
+var configFile string
 
+func main() {
 	var rootCmd = &cobra.Command{
 		Use:   "abcfe-node",
 		Short: "ABCFe blockchain node",
@@ -46,13 +47,16 @@ func main() {
 		},
 	}
 
+	// 글로벌 플래그 등록
+	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "Path to config file")
+
 	rootCmd.AddCommand(nodeCmd())
 	// rootCmd.AddCommand(walletCmd())
 	// rootCmd.AddCommand(configCmd())
 	// rootCmd.AddCommand(debugCmd())
 
 	if err := rootCmd.Execute(); err != nil {
-		logger.Error("Failed to execute command:", err)
+		fmt.Println("Failed to execute command:", err)
 		os.Exit(1)
 	}
 }
@@ -111,22 +115,23 @@ func nodeCmd() *cobra.Command {
 }
 
 func runNode() {
-	app, err := app.New()
+	application, err := app.New(configFile)
 	if err != nil {
-		logger.Error("Failed to initialize application:", err)
+		fmt.Println("Failed to initialize application:", err)
 		os.Exit(1)
 	}
 
-	app.SigHandler()
+	application.SigHandler()
 	logger.Info("Node start.")
 
-	if err := app.NewRest(); err != nil {
+	// REST API, P2P, Consensus 모두 시작
+	if err := application.StartAll(); err != nil {
 		logger.Error("Failed to start services:", err)
-		app.Terminate()
+		application.Terminate()
 		os.Exit(1)
 	}
 
-	app.Wait()
+	application.Wait()
 	logger.Info("Node terminated.")
 }
 
@@ -298,18 +303,19 @@ func runNodeWithSignalHandling() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
-	app, err := app.New()
+	application, err := app.New(configFile)
 	if err != nil {
-		logger.Error("Failed to initialize application:", err)
+		fmt.Println("Failed to initialize application:", err)
 		os.Exit(1)
 	}
 
-	app.SigHandler()
+	application.SigHandler()
 	logger.Info("Node start.")
 
-	if err := app.NewRest(); err != nil {
+	// REST API, P2P, Consensus 모두 시작
+	if err := application.StartAll(); err != nil {
 		logger.Error("Failed to start services:", err)
-		app.Terminate()
+		application.Terminate()
 		os.Exit(1)
 	}
 
@@ -319,7 +325,7 @@ func runNodeWithSignalHandling() {
 		logger.Info("Received signal:", sig)
 
 		// 정리 작업
-		app.Terminate()
+		application.Terminate()
 
 		// PID 파일 제거 (데몬 모드인 경우)
 		removePidFile(pidFile)
@@ -327,6 +333,6 @@ func runNodeWithSignalHandling() {
 		os.Exit(0)
 	}()
 
-	app.Wait()
+	application.Wait()
 	logger.Info("Node terminated.")
 }

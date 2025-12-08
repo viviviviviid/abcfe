@@ -3,6 +3,8 @@ level = "local"
 serviceName = "abcfe-node"
 port = 3000
 mode = "boot"
+networkID = "abcfe-mainnet"
+blockProducer = true
 
 [logInfo]
 path = "./log/syslogs/"
@@ -29,3 +31,8 @@ SystemBalances = [500000000]
 
 [server]
 RestPort = 8000
+
+[p2p]
+Address = "0.0.0.0"
+Port = 30303
+BootNodes = []

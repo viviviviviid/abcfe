@@ -9,11 +9,12 @@ import (
 )
 
 type Common struct {
-	Level       string // local, dev, prod
-	ServiceName string
-	Port        int
-	Mode        string // boot, validator, sentry
-
+	Level         string // local, dev, prod
+	ServiceName   string
+	Port          int
+	Mode          string // boot, validator, sentry
+	NetworkID     string // 네트워크 식별자
+	BlockProducer bool   // 블록 생성자 여부
 }
 
 type LogInfo struct {
@@ -48,6 +49,12 @@ type Server struct {
 	RestPort int `toml:"RestPort"`
 }
 
+type P2P struct {
+	Address   string   `toml:"Address"`
+	Port      int      `toml:"Port"`
+	BootNodes []string `toml:"BootNodes"`
+}
+
 type Config struct {
 	Common  Common
 	LogInfo LogInfo
@@ -56,6 +63,7 @@ type Config struct {
 	Version Version
 	Genesis Genesis
 	Server  Server
+	P2P     P2P
 }
 
 func NewConfig(filepath string) (*Config, error) {

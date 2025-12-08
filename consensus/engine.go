@@ -230,7 +230,7 @@ func (e *ConsensusEngine) HandleProposal(height uint64, round uint32, blockHash 
 	}
 
 	// 블록 검증
-	if err := e.blockchain.ValidateBlock(block); err != nil {
+	if err := e.blockchain.ValidateBlock(*block); err != nil {
 		log.Printf("[Consensus] Invalid proposed block: %v", err)
 		return
 	}

@@ -20,7 +20,30 @@ if [ -z "$NODE_PIDS" ]; then
 fi
 
 echo -e "${YELLOW}실행 중인 노드 프로세스:${NC}"
-ps aux | grep abcfed | grep -v grep | awk '{print "  PID:", $2, "|", $11, $12, $13}'
+ps aux | grep abcfed | grep -v grep | while read line; do
+    pid=$(echo "$line" | awk '{print $2}')
+    cmd=$(echo "$line" | awk '{for(i=11;i<=NF;i++) printf "%s ", $i; print ""}')
+    
+    # 실제 실행 파일 경로 확인
+    if [ -r "/proc/$pid/exe" ]; then
+        exe_path=$(readlink -f /proc/$pid/exe 2>/dev/null || echo "N/A")
+    else
+        exe_path="N/A (권한 없음)"
+    fi
+    
+    # 작업 디렉토리 확인
+    if [ -r "/proc/$pid/cwd" ]; then
+        cwd=$(readlink -f /proc/$pid/cwd 2>/dev/null || echo "N/A")
+    else
+        cwd="N/A"
+    fi
+    
+    echo -e "  ${GREEN}PID: $pid${NC}"
+    echo -e "    실행 파일: ${BLUE}$exe_path${NC}"
+    echo -e "    작업 디렉토리: $cwd"
+    echo -e "    명령어: $cmd"
+    echo ""
+done
 echo ""
 
 # 각 포트별로 노드 상태 확인

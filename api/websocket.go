@@ -197,11 +197,21 @@ func (c *WSClient) writePump() {
 	for {
 		message, ok := <-c.send
 		if !ok {
+			// 채널이 닫혔으면 정상 종료 메시지 전송
 			c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 			return
 		}
 
 		if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+			// 클라이언트가 연결을 끊었을 때는 정상 종료로 처리
+			if websocket.IsUnexpectedCloseError(err,
+				websocket.CloseNormalClosure,
+				websocket.CloseGoingAway,
+				websocket.CloseNoStatusReceived) {
+				logger.Error("WebSocket write error:", err)
+			} else {
+				logger.Debug("WebSocket write closed:", err)
+			}
 			return
 		}
 	}
@@ -217,8 +227,19 @@ func (c *WSClient) readPump() {
 	for {
 		_, _, err := c.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+			// 정상적인 클라이언트 종료는 에러로 로깅하지 않음
+			// CloseGoingAway (1001): 브라우저 탭 닫기, 페이지 이동
+			// CloseNoStatusReceived (1005): 상태 코드 없이 연결 종료 (브라우저 종료 등)
+			// CloseNormalClosure (1000): 정상 종료
+			if websocket.IsUnexpectedCloseError(err, 
+				websocket.CloseNormalClosure,
+				websocket.CloseGoingAway,
+				websocket.CloseNoStatusReceived,
+				websocket.CloseAbnormalClosure) {
 				logger.Error("WebSocket read error:", err)
+			} else {
+				// 정상 종료는 Debug 레벨로만 로깅
+				logger.Debug("WebSocket client disconnected:", err)
 			}
 			break
 		}

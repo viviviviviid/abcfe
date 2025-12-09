@@ -44,7 +44,7 @@ create_node_config() {
         return
     fi
     
-    local port=$((3000 + node_num - 1))
+    local port=$((10000 + node_num - 1))
     local rest_port=$((8000 + node_num - 1))
     local p2p_port=$((30303 + node_num - 1))
     local boot_node_port=30303
@@ -140,7 +140,7 @@ start_node() {
     fi
     
     if [ "$node_num" -eq 1 ]; then
-        echo -e "${GREEN}=== Node 1 시작 (Port 3000, REST 8000) ===${NC}"
+        echo -e "${GREEN}=== Node 1 시작 (Port 10000, REST 8000) ===${NC}"
         ./abcfed > /tmp/abcfed_node1.log 2>&1 &
         NODE1_PID=$!
         echo "Node 1 PID: $NODE1_PID"

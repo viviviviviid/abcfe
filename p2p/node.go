@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -239,9 +240,6 @@ func (n *Node) handlePeer(peer *Peer) {
 		n.removePeer(peer)
 	}()
 
-	// 10MB 버퍼 (블록 100개 정도 수용 가능)
-	buffer := make([]byte, 10*1024*1024)
-
 	for {
 		select {
 		case <-n.stopCh:
@@ -250,15 +248,34 @@ func (n *Node) handlePeer(peer *Peer) {
 			// 읽기 타임아웃 설정
 			peer.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 
-			nBytes, err := peer.Conn.Read(buffer)
-			if err != nil {
-				logger.Debug("[P2P] Peer ", peer.Address, " read error: ", err)
+			// 1. 먼저 4바이트 길이 헤더 읽기
+			header := make([]byte, 4)
+			if _, err := io.ReadFull(peer.Conn, header); err != nil {
+				logger.Debug("[P2P] Peer ", peer.Address, " read header error: ", err)
 				return
 			}
 
-			logger.Debug("[P2P] Received ", nBytes, " bytes from ", peer.Address)
+			// 2. 메시지 길이 파싱
+			msgLen := uint32(header[0])<<24 | uint32(header[1])<<16 | uint32(header[2])<<8 | uint32(header[3])
+			
+			// 메시지 크기 검증 (최대 10MB)
+			if msgLen > 10*1024*1024 {
+				logger.Error("[P2P] Message too large from ", peer.Address, ": ", msgLen, " bytes")
+				return
+			}
 
-			msg, err := DeserializeMessage(buffer[:nBytes])
+			// 3. 정확한 길이만큼 메시지 읽기
+			buffer := make([]byte, msgLen)
+			peer.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
+			if _, err := io.ReadFull(peer.Conn, buffer); err != nil {
+				logger.Debug("[P2P] Peer ", peer.Address, " read body error: ", err)
+				return
+			}
+
+			logger.Debug("[P2P] Received complete message (", msgLen, " bytes) from ", peer.Address)
+
+			// 4. 메시지 역직렬화
+			msg, err := DeserializeMessage(buffer)
 			if err != nil {
 				logger.Error("[P2P] Failed to deserialize message from ", peer.Address, ": ", err)
 				continue
@@ -401,7 +418,19 @@ func (n *Node) sendMessage(peer *Peer, msg *Message) error {
 		return err
 	}
 
+	// 메시지 길이를 4바이트 헤더로 추가
+	msgLen := uint32(len(data))
+	header := make([]byte, 4)
+	header[0] = byte(msgLen >> 24)
+	header[1] = byte(msgLen >> 16)
+	header[2] = byte(msgLen >> 8)
+	header[3] = byte(msgLen)
+
+	// 헤더 + 메시지 전송
 	peer.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+	if _, err := peer.Conn.Write(header); err != nil {
+		return err
+	}
 	_, err = peer.Conn.Write(data)
 	return err
 }

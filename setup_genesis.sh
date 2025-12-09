@@ -9,7 +9,7 @@ NODE_COUNT=${1:-2}
 echo -e "\033[1;33m=== 제네시스 블록 셋업 ===[0m"
 
 # Node 1 (boot 노드) DB 경로
-BOOT_DB="./resource/db/leveldb_3000.db"
+BOOT_DB="./resource/db/leveldb_10000.db"
 
 # Node 1이 이미 제네시스 블록을 가지고 있는지 확인
 if [ -d "$BOOT_DB" ] && [ -f "$BOOT_DB/CURRENT" ]; then
@@ -48,7 +48,7 @@ echo ""
 echo "제네시스 블록을 다른 노드들에게 복사 중..."
 
 for i in $(seq 2 $NODE_COUNT); do
-    PORT=$((3000 + i - 1))
+    PORT=$((10000 + i - 1))
     DB_PATH="./resource/db$i/leveldb_${PORT}.db"
     
     echo "  Node $i: $DB_PATH"

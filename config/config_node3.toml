@@ -1,7 +1,7 @@
 [common]
 level = "local"
 serviceName = "abcfe-node-3"
-port = 3002
+port = 10002
 mode = "validator"
 networkID = "abcfe-mainnet"
 blockProducer = false

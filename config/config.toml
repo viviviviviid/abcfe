@@ -1,7 +1,7 @@
 [common]
 level = "local"
 serviceName = "abcfe-node"
-port = 3000
+port = 10000
 mode = "boot"
 networkID = "abcfe-mainnet"
 blockProducer = true

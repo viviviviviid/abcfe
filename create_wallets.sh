@@ -50,8 +50,27 @@ for i in $(seq 1 $NODE_COUNT); do
     else
         echo "지갑 생성 중: ${wallet_dir}/"
         
+        # abcfed 바이너리 확인
+        if [ ! -x "./abcfed" ]; then
+            echo -e "${RED}✗ 오류: abcfed 바이너리가 없거나 실행 권한이 없습니다${NC}"
+            echo "  make build 명령으로 빌드하거나, chmod +x abcfed 로 권한을 부여하세요"
+            exit 1
+        fi
+        
         # 지갑 생성
-        output=$(./abcfed wallet create --wallet-dir="$wallet_dir" 2>&1)
+        echo "  → ./abcfed wallet create --wallet-dir=\"$wallet_dir\" 실행 중..."
+        output=$(timeout 10 ./abcfed wallet create --wallet-dir="$wallet_dir" 2>&1)
+        
+        exit_code=$?
+        if [ $exit_code -eq 124 ]; then
+            echo -e "${RED}✗ 지갑 생성 시간 초과 (10초)${NC}"
+            echo "  디버그: $output"
+            exit 1
+        elif [ $exit_code -ne 0 ]; then
+            echo -e "${RED}✗ 지갑 생성 실패 (exit code: $exit_code)${NC}"
+            echo "  디버그: $output"
+            exit 1
+        fi
         
         if [ -f "${wallet_dir}/wallet.json" ]; then
             echo -e "${GREEN}✓ 지갑 생성 완료${NC}"

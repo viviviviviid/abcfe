@@ -126,6 +126,21 @@ func New(configPath string) (*App, error) {
 		currentHeight, _ := app.BlockChain.GetLatestHeight()
 		logger.Debug("[BlockHandler] Received block height=", block.Header.Height, " current=", currentHeight)
 
+		// 빈 체인 (currentHeight == 0)이고 제네시스 블록 (height == 0)을 받은 경우 특별 처리
+		if currentHeight == 0 && block.Header.Height == 0 {
+			logger.Info("[BlockHandler] Received genesis block from peer, importing...")
+			if err := app.BlockChain.ValidateBlock(*block); err != nil {
+				logger.Error("[BlockHandler] Invalid genesis block: ", err)
+				return
+			}
+			if success, err := app.BlockChain.AddBlock(*block); !success || err != nil {
+				logger.Error("[BlockHandler] Failed to add genesis block: ", err)
+				return
+			}
+			logger.Info("[BlockHandler] Genesis block imported successfully")
+			return
+		}
+
 		if block.Header.Height <= currentHeight {
 			logger.Debug("[BlockHandler] Block already exists, skipping")
 			return
@@ -259,9 +274,33 @@ func (p *App) StartAll() error {
 	}
 
 	// Boot 노드들에 연결
+	connectedPeers := 0
 	for _, bootNode := range p.Conf.P2P.BootNodes {
 		if err := p.ConnectPeer(bootNode); err != nil {
 			logger.Error("Failed to connect to boot node: ", bootNode, " error: ", err)
+		} else {
+			connectedPeers++
+		}
+	}
+
+	// 피어 연결 후 초기 동기화 시작
+	if connectedPeers > 0 {
+		// 피어가 완전히 연결될 때까지 잠시 대기
+		time.Sleep(1 * time.Second)
+		
+		// 초기 블록 동기화 시도
+		go func() {
+			logger.Info("[Sync] Starting initial block synchronization...")
+			if err := p.P2PService.SyncBlocks(); err != nil {
+				logger.Debug("[Sync] Initial sync completed or no sync needed: ", err)
+			} else {
+				logger.Info("[Sync] Initial synchronization completed")
+			}
+		}()
+		
+		// 주기적 동기화 시작 (sync-only 노드인 경우에만)
+		if !p.Conf.Common.BlockProducer {
+			go p.startPeriodicSync()
 		}
 	}
 
@@ -276,6 +315,28 @@ func (p *App) StartAll() error {
 
 	logger.Info("All services started successfully")
 	return nil
+}
+
+// startPeriodicSync 주기적 블록 동기화 (sync-only 노드용)
+func (p *App) startPeriodicSync() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-p.stop:
+			return
+		case <-ticker.C:
+			if p.P2PService.GetPeerCount() > 0 {
+				currentHeight, _ := p.BlockChain.GetLatestHeight()
+				logger.Debug("[Sync] Periodic sync check at height ", currentHeight)
+				
+				if err := p.P2PService.SyncBlocks(); err != nil {
+					logger.Debug("[Sync] Sync check: ", err)
+				}
+			}
+		}
+	}
 }
 
 // Cleanup 애플리케이션 정리

@@ -19,6 +19,10 @@ func HashToString(hash prt.Hash) string {
 
 // StringToHash 16진수 문자열을 Hash 타입으로 변환
 func StringToHash(str string) (prt.Hash, error) {
+	// 0x 접두사 제거
+	if len(str) >= 2 && str[0:2] == "0x" {
+		str = str[2:]
+	}
 	bytes, err := hex.DecodeString(str)
 	if err != nil {
 		return prt.Hash{}, fmt.Errorf("invalid hash string: %v", err)
@@ -53,6 +57,10 @@ func AddressToString(address prt.Address) string {
 
 // StringToAddress 16진수 문자열을 Address 타입으로 변환
 func StringToAddress(str string) (prt.Address, error) {
+	// 0x 접두사 제거
+	if len(str) >= 2 && str[0:2] == "0x" {
+		str = str[2:]
+	}
 	bytes, err := hex.DecodeString(str)
 	if err != nil {
 		return prt.Address{}, fmt.Errorf("잘못된 주소 문자열: %v", err)
@@ -75,6 +83,10 @@ func SignatureToString(sig prt.Signature) string {
 
 // StringToSignature 16진수 문자열을 Signature 타입으로 변환
 func StringToSignature(str string) (prt.Signature, error) {
+	// 0x 접두사 제거
+	if len(str) >= 2 && str[0:2] == "0x" {
+		str = str[2:]
+	}
 	bytes, err := hex.DecodeString(str)
 	if err != nil {
 		return prt.Signature{}, fmt.Errorf("잘못된 서명 문자열: %v", err)

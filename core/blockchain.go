@@ -29,7 +29,13 @@ func NewChainState(db *leveldb.DB, cfg *config.Config) (*BlockChain, error) {
 	if err := bc.LoadChainDB(); err != nil {
 		return nil, err
 	}
-	if bc.LatestHeight == 0 && bc.LatestBlockHash == "" {
+	
+	// boot 노드나 블록 생성자인 경우에만 제네시스 블록 생성
+	// sync-only 노드는 P2P를 통해 제네시스 블록을 받음
+	shouldCreateGenesis := (cfg.Common.Mode == "boot" || cfg.Common.BlockProducer) && 
+	                        (bc.LatestHeight == 0 && bc.LatestBlockHash == "")
+	
+	if shouldCreateGenesis {
 		genesisBlk, err := bc.SetGenesisBlock()
 		if err != nil {
 			return nil, err
@@ -109,10 +115,7 @@ func (p *BlockChain) GetLatestHeight() (uint64, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	if p.LatestHeight == 0 && p.LatestBlockHash == "" {
-		return 0, fmt.Errorf("no blocks in the chain yet")
-	}
-
+	// 빈 체인인 경우에도 에러 대신 0을 리턴 (sync-only 노드 지원)
 	return p.LatestHeight, nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/abcfe/abcfe-node/common/logger"
+	"github.com/abcfe/abcfe-node/core"
 )
 
 // PeerState 피어 연결 상태
@@ -39,11 +40,12 @@ type Peer struct {
 type Node struct {
 	mu sync.RWMutex
 
-	ID        string
-	Address   string
-	Port      int
-	NetworkID string
-	Version   string
+	ID         string
+	Address    string
+	Port       int
+	NetworkID  string
+	Version    string
+	Blockchain *core.BlockChain // 블록체인 참조 (핸드셰이크 시 높이 정보 필요)
 
 	// 피어 관리
 	Peers       map[string]*Peer // key: peer ID
@@ -237,7 +239,8 @@ func (n *Node) handlePeer(peer *Peer) {
 		n.removePeer(peer)
 	}()
 
-	buffer := make([]byte, 65536) // 64KB 버퍼
+	// 10MB 버퍼 (블록 100개 정도 수용 가능)
+	buffer := make([]byte, 10*1024*1024)
 
 	for {
 		select {
@@ -249,11 +252,15 @@ func (n *Node) handlePeer(peer *Peer) {
 
 			nBytes, err := peer.Conn.Read(buffer)
 			if err != nil {
+				logger.Debug("[P2P] Peer ", peer.Address, " read error: ", err)
 				return
 			}
 
+			logger.Debug("[P2P] Received ", nBytes, " bytes from ", peer.Address)
+
 			msg, err := DeserializeMessage(buffer[:nBytes])
 			if err != nil {
+				logger.Error("[P2P] Failed to deserialize message from ", peer.Address, ": ", err)
 				continue
 			}
 
@@ -275,14 +282,34 @@ func (n *Node) handlePeer(peer *Peer) {
 
 // sendHandshake 핸드셰이크 전송
 func (n *Node) sendHandshake(peer *Peer) error {
+	// 현재 블록 높이 가져오기
+	bestHeight := uint64(0)
+	bestHash := ""
+	if n.Blockchain != nil {
+		if height, err := n.Blockchain.GetLatestHeight(); err == nil {
+			bestHeight = height
+		}
+		if hash, err := n.Blockchain.GetLatestBlockHash(); err == nil {
+			bestHash = hash
+		}
+	}
+	
 	payload := HandshakePayload{
 		Version:    n.Version,
 		NodeID:     n.ID,
 		NetworkID:  n.NetworkID,
 		ListenPort: n.Port,
-		BestHeight: 0, // TODO: 실제 높이
-		BestHash:   "",
+		BestHeight: bestHeight,
+		BestHash:   bestHash,
 	}
+
+	hashPrefix := "empty"
+	if len(bestHash) >= 16 {
+		hashPrefix = bestHash[:16]
+	} else if len(bestHash) > 0 {
+		hashPrefix = bestHash
+	}
+	logger.Debug("[P2P] Sending handshake with height=", bestHeight, " hash=", hashPrefix, "...")
 
 	payloadBytes, err := MarshalPayload(payload)
 	if err != nil {
@@ -306,7 +333,7 @@ func (n *Node) handleHandshake(msg *Message, peer *Peer) {
 		return
 	}
 
-	logger.Debug("[P2P] Received handshake from node: ", payload.NodeID, " network: ", payload.NetworkID)
+	logger.Info("[P2P] Received handshake from node: ", payload.NodeID, " network: ", payload.NetworkID, " height: ", payload.BestHeight)
 
 	// 네트워크 ID 확인
 	if payload.NetworkID != n.NetworkID {
@@ -319,6 +346,8 @@ func (n *Node) handleHandshake(msg *Message, peer *Peer) {
 	peer.Version = payload.Version
 	peer.BestHeight = payload.BestHeight
 	peer.State = PeerStateActive
+	
+	logger.Info("[P2P] Peer info updated: ID=", peer.ID, " BestHeight=", peer.BestHeight)
 
 	// ACK 응답 (인바운드인 경우)
 	if peer.Inbound && msg.Type == MsgTypeHandshake {
@@ -333,11 +362,25 @@ func (n *Node) handleHandshake(msg *Message, peer *Peer) {
 
 // sendHandshakeAck 핸드셰이크 ACK 전송
 func (n *Node) sendHandshakeAck(peer *Peer) error {
+	// 현재 블록 높이 가져오기
+	bestHeight := uint64(0)
+	bestHash := ""
+	if n.Blockchain != nil {
+		if height, err := n.Blockchain.GetLatestHeight(); err == nil {
+			bestHeight = height
+		}
+		if hash, err := n.Blockchain.GetLatestBlockHash(); err == nil {
+			bestHash = hash
+		}
+	}
+	
 	payload := HandshakePayload{
 		Version:    n.Version,
 		NodeID:     n.ID,
 		NetworkID:  n.NetworkID,
 		ListenPort: n.Port,
+		BestHeight: bestHeight,
+		BestHash:   bestHash,
 	}
 
 	payloadBytes, err := MarshalPayload(payload)

@@ -37,6 +37,9 @@ func NewP2PService(address string, port int, networkID string, blockchain *core.
 		running:    false,
 	}
 
+	// 노드에도 블록체인 참조 설정 (핸드셰이크용)
+	node.Blockchain = blockchain
+
 	// 메시지 핸들러 설정
 	node.MessageHandler = service.handleMessage
 
@@ -175,10 +178,14 @@ func (s *P2PService) handleNewTx(msg *Message, peer *Peer) {
 func (s *P2PService) handleGetBlocks(msg *Message, peer *Peer) {
 	var payload GetBlocksPayload
 	if err := UnmarshalPayload(msg.Payload, &payload); err != nil {
+		logger.Error("[P2P] Failed to unmarshal GetBlocks payload: ", err)
 		return
 	}
 
+	logger.Info("[P2P] Received GetBlocks request from ", peer.Address, " for blocks ", payload.StartHeight, " to ", payload.EndHeight)
+
 	if s.Blockchain == nil {
+		logger.Error("[P2P] Blockchain not set, cannot respond to GetBlocks")
 		return
 	}
 
@@ -187,32 +194,42 @@ func (s *P2PService) handleGetBlocks(msg *Message, peer *Peer) {
 	for height := payload.StartHeight; height <= payload.EndHeight && len(blocksData) < 100; height++ {
 		block, err := s.Blockchain.GetBlockByHeight(height)
 		if err != nil {
+			logger.Error("[P2P] Failed to get block at height ", height, ": ", err)
 			break
 		}
 		blockData, err := utils.SerializeData(block, utils.SerializationFormatGob)
 		if err != nil {
+			logger.Error("[P2P] Failed to serialize block at height ", height, ": ", err)
 			continue
 		}
 		blocksData = append(blocksData, blockData)
 	}
 
+	logger.Info("[P2P] Sending ", len(blocksData), " blocks to ", peer.Address)
+
 	// 블록 응답 전송
 	responsePayload := BlocksPayload{BlocksData: blocksData}
 	payloadBytes, err := MarshalPayload(responsePayload)
 	if err != nil {
+		logger.Error("[P2P] Failed to marshal Blocks payload: ", err)
 		return
 	}
 
 	response := NewMessage(MsgTypeBlocks, payloadBytes, s.Node.ID)
-	s.Node.sendMessage(peer, response)
+	if err := s.Node.sendMessage(peer, response); err != nil {
+		logger.Error("[P2P] Failed to send Blocks message: ", err)
+	}
 }
 
 // handleBlocks 블록 응답 처리
 func (s *P2PService) handleBlocks(msg *Message, peer *Peer) {
 	var payload BlocksPayload
 	if err := UnmarshalPayload(msg.Payload, &payload); err != nil {
+		logger.Error("[P2P] Failed to unmarshal Blocks payload: ", err)
 		return
 	}
+
+	logger.Info("[P2P] Received ", len(payload.BlocksData), " blocks from ", peer.Address)
 
 	// 수신된 블록들 처리
 	s.mu.RLock()
@@ -220,13 +237,17 @@ func (s *P2PService) handleBlocks(msg *Message, peer *Peer) {
 	s.mu.RUnlock()
 
 	if handler != nil {
-		for _, blockData := range payload.BlocksData {
+		for i, blockData := range payload.BlocksData {
 			var block core.Block
 			if err := utils.DeserializeData(blockData, &block, utils.SerializationFormatGob); err != nil {
+				logger.Error("[P2P] Failed to deserialize block ", i, ": ", err)
 				continue
 			}
+			logger.Debug("[P2P] Processing received block height=", block.Header.Height)
 			handler(&block)
 		}
+	} else {
+		logger.Error("[P2P] Block handler not set!")
 	}
 }
 
@@ -291,10 +312,12 @@ func (s *P2PService) RequestBlocks(peer *Peer, startHeight, endHeight uint64) er
 // SyncBlocks 피어와 블록 동기화
 func (s *P2PService) SyncBlocks() error {
 	if s.Blockchain == nil {
+		logger.Error("[Sync] Blockchain not set")
 		return fmt.Errorf("blockchain not set")
 	}
 
 	peers := s.Node.GetPeers()
+	logger.Info("[Sync] Available peers: ", len(peers))
 	if len(peers) == 0 {
 		return fmt.Errorf("no peers available")
 	}
@@ -304,6 +327,7 @@ func (s *P2PService) SyncBlocks() error {
 	var bestHeight uint64
 
 	for _, peer := range peers {
+		logger.Info("[Sync] Peer ", peer.ID, " state=", peer.State, " height=", peer.BestHeight)
 		if peer.State == PeerStateActive && peer.BestHeight > bestHeight {
 			bestHeight = peer.BestHeight
 			bestPeer = peer
@@ -311,15 +335,31 @@ func (s *P2PService) SyncBlocks() error {
 	}
 
 	if bestPeer == nil {
+		logger.Error("[Sync] No active peers found")
 		return fmt.Errorf("no active peers found")
 	}
 
-	// 현재 높이보다 높은 블록 요청
-	currentHeight, _ := s.Blockchain.GetLatestHeight()
+	// 현재 높이 확인
+	currentHeight, err := s.Blockchain.GetLatestHeight()
+	if err != nil {
+		// 체인이 비어있는 경우 (제네시스 블록도 없음) - height 0부터 요청
+		logger.Info("[Sync] Empty chain, requesting from genesis (height 0)")
+		currentHeight = 0
+		if bestHeight == 0 {
+			return nil
+		}
+		logger.Info("[Sync] Requesting blocks 0 to ", bestHeight, " from peer ", bestPeer.ID)
+		return s.RequestBlocks(bestPeer, 0, bestHeight)
+	}
+	
+	logger.Info("[Sync] Current height: ", currentHeight, ", Best peer height: ", bestHeight)
+	
 	if bestHeight <= currentHeight {
+		logger.Info("[Sync] Already synced (current=", currentHeight, ", best=", bestHeight, ")")
 		return nil // 이미 동기화됨
 	}
 
+	logger.Info("[Sync] Requesting blocks ", currentHeight+1, " to ", bestHeight, " from peer ", bestPeer.ID)
 	return s.RequestBlocks(bestPeer, currentHeight+1, bestHeight)
 }
 

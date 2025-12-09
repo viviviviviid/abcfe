@@ -29,9 +29,27 @@ func GetStatus(bc *core.BlockChain) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		status := bc.GetChainStatus()
 
-		response := BlockchainStatResp{
-			Height:    status.LatestHeight,
-			BlockHash: status.LatestBlockHash,
+		// Genesis block hash 조회
+		genesisHash := ""
+		if genesisBlock, err := bc.GetBlockByHeight(0); err == nil {
+			genesisHash = utils.HashToString(genesisBlock.Header.Hash)
+		}
+
+		// Network ID 조회 (config에서)
+		networkId := "abcfe-mainnet" // 기본값
+
+		// Mempool size
+		mempoolSize := 0
+		if bc != nil && bc.Mempool != nil {
+			mempoolSize = len(bc.Mempool.GetTxs())
+		}
+
+		response := map[string]interface{}{
+			"currentHeight":    status.LatestHeight,
+			"currentBlockHash": status.LatestBlockHash,
+			"genesisHash":      genesisHash,
+			"networkId":         networkId,
+			"mempoolSize":      mempoolSize,
 		}
 
 		sendResp(w, http.StatusOK, response, nil)
@@ -160,7 +178,9 @@ func GetAddressUtxo(bc *core.BlockChain) http.HandlerFunc {
 			return
 		}
 
-		response := formatUtxoResp(utxos)
+		response := map[string]interface{}{
+			"utxos": formatUtxoResp(utxos),
+		}
 		sendResp(w, http.StatusOK, response, nil)
 	}
 }
@@ -341,14 +361,9 @@ func formatUtxoResp(utxos []*core.UTXO) []interface{} {
 		result[i] = map[string]interface{}{
 			"txId":        utils.HashToString(utxo.TxId),
 			"outputIndex": utxo.OutputIndex,
-			"txOut": map[string]interface{}{
-				"address": utils.AddressToString(utxo.TxOut.Address),
-				"amount":  utxo.TxOut.Amount,
-				"txType":  utxo.TxOut.TxType,
-			},
+			"amount":      utxo.TxOut.Amount,
+			"address":     utils.AddressToString(utxo.TxOut.Address),
 			"height":      utxo.Height,
-			"spent":       utxo.Spent,
-			"spentHeight": utxo.SpentHeight,
 		}
 	}
 	return result
@@ -632,11 +647,11 @@ func GetBlocks(bc *core.BlockChain) http.HandlerFunc {
 		}
 
 		response := map[string]interface{}{
-			"blocks":      blocks,
-			"page":        page,
-			"limit":       limit,
-			"totalBlocks": totalBlocks,
-			"totalPages":  totalPages,
+			"blocks":     blocks,
+			"page":       page,
+			"limit":      limit,
+			"total":      totalBlocks,
+			"totalPages": totalPages,
 		}
 
 		sendResp(w, http.StatusOK, response, nil)
@@ -686,34 +701,35 @@ func GetConsensusStatus(cons *consensus.Consensus) http.HandlerFunc {
 
 		// 현재 제안자 정보
 		var proposerAddr string
-		var isLocalProposer bool
 		if proposer := cons.GetCurrentProposer(); proposer != nil {
 			proposerAddr = utils.AddressToString(proposer.Address)
 		}
-		isLocalProposer = cons.IsLocalProposer()
 
-		// 로컬 검증자 정보
-		var localValidatorAddr string
-		if cons.LocalValidator != nil {
-			localValidatorAddr = utils.AddressToString(cons.LocalValidator.Address)
+		// 검증자 목록 구성 (문서 형식에 맞춤)
+		validators := []map[string]interface{}{}
+		votingPower := make(map[string]uint64)
+
+		// ValidatorSet에서 활성 검증자 조회
+		if cons.ValidatorSet != nil {
+			for addrStr, validator := range cons.ValidatorSet.Validators {
+				if validator.IsActive {
+					validators = append(validators, map[string]interface{}{
+						"address":       addrStr,
+						"stakingAmount":  validator.VotingPower,
+						"isActive":       validator.IsActive,
+					})
+					votingPower[addrStr] = validator.VotingPower
+				}
+			}
 		}
 
 		status := map[string]interface{}{
 			"state":         string(cons.State),      // IDLE, PROPOSING, VOTING, COMMITTING
 			"currentHeight": cons.CurrentHeight,
 			"currentRound":  cons.CurrentRound,
-			"proposer": map[string]interface{}{
-				"address":         proposerAddr,
-				"isLocalProposer": isLocalProposer,
-			},
-			"validators": map[string]interface{}{
-				"count":       cons.GetValidatorCount(),
-				"totalStaked": cons.GetTotalStaked(),
-			},
-			"localValidator": map[string]interface{}{
-				"address":  localValidatorAddr,
-				"isActive": cons.LocalValidator != nil,
-			},
+			"proposer":      proposerAddr,
+			"validators":    validators,
+			"votingPower":   votingPower,
 		}
 
 		sendResp(w, http.StatusOK, status, nil)

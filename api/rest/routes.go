@@ -37,7 +37,8 @@ func setupRouter(blockchain *core.BlockChain, walletMgr *wallet.WalletManager, w
 	apiRouter.HandleFunc("/blocks", GetBlocks(blockchain)).Methods("GET")              // 블록 목록 (페이지네이션)
 	apiRouter.HandleFunc("/block", ComposeAndAddBlock(blockchain)).Methods("POST")     // 테스트 전용 블록 구성 및 블록 추가 (검증은 없음)
 	apiRouter.HandleFunc("/block/latest", GetLatestBlock(blockchain)).Methods("GET")
-	apiRouter.HandleFunc("/block/{height}", GetBlockByHeight(blockchain)).Methods("GET")
+	apiRouter.HandleFunc("/block/height/{height}", GetBlockByHeight(blockchain)).Methods("GET") // 문서와 일치
+	apiRouter.HandleFunc("/block/{height}", GetBlockByHeight(blockchain)).Methods("GET")        // 하위 호환성
 	apiRouter.HandleFunc("/block/hash/{hash}", GetBlockByHash(blockchain)).Methods("GET")
 
 	// 트랜잭션 관련 API

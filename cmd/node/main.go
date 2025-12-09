@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/abcfe/abcfe-node/app"
 	"github.com/abcfe/abcfe-node/common/logger"
+	"github.com/abcfe/abcfe-node/wallet"
 	"github.com/spf13/cobra"
 )
 
@@ -51,7 +53,7 @@ func main() {
 	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "Path to config file")
 
 	rootCmd.AddCommand(nodeCmd())
-	// rootCmd.AddCommand(walletCmd())
+	rootCmd.AddCommand(walletCmd())
 	// rootCmd.AddCommand(configCmd())
 	// rootCmd.AddCommand(debugCmd())
 
@@ -335,4 +337,234 @@ func runNodeWithSignalHandling() {
 
 	application.Wait()
 	logger.Info("Node terminated.")
+}
+
+// 지갑 디렉토리 기본 경로
+func getDefaultWalletDir() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return "./wallets"
+	}
+	return filepath.Join(homeDir, ".abcfe-node", "wallets")
+}
+
+var walletDir string
+
+func walletCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "wallet",
+		Short: "Wallet management commands",
+		Long:  `Commands for managing wallets, accounts, and keys.`,
+	}
+
+	// 지갑 디렉토리 플래그
+	cmd.PersistentFlags().StringVarP(&walletDir, "wallet-dir", "w", getDefaultWalletDir(), "Wallet directory path")
+
+	// 하위 명령어 추가
+	cmd.AddCommand(walletCreateCmd())
+	cmd.AddCommand(walletRestoreCmd())
+	cmd.AddCommand(walletListCmd())
+	cmd.AddCommand(walletAddAccountCmd())
+	cmd.AddCommand(walletShowMnemonicCmd())
+
+	return cmd
+}
+
+// 새 지갑 생성
+func walletCreateCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "create",
+		Short: "Create a new wallet with mnemonic",
+		Run: func(cmd *cobra.Command, args []string) {
+			wm := wallet.NewWalletManager(walletDir)
+
+			// 기존 지갑 확인
+			walletFile := filepath.Join(walletDir, "wallet.json")
+			if _, err := os.Stat(walletFile); err == nil {
+				fmt.Println("Wallet already exists at:", walletFile)
+				fmt.Println("Use 'wallet restore' to restore from mnemonic or delete the existing wallet first.")
+				return
+			}
+
+			// 새 지갑 생성
+			mnemonicWallet, err := wm.CreateWallet()
+			if err != nil {
+				fmt.Printf("Failed to create wallet: %v\n", err)
+				return
+			}
+
+			// 지갑 저장
+			if err := wm.SaveWallet(); err != nil {
+				fmt.Printf("Failed to save wallet: %v\n", err)
+				return
+			}
+
+			fmt.Println("=== New Wallet Created ===")
+			fmt.Println("")
+			fmt.Println("IMPORTANT: Write down your mnemonic phrase and keep it safe!")
+			fmt.Println("If you lose it, you will lose access to your wallet forever.")
+			fmt.Println("")
+			fmt.Printf("Mnemonic: %s\n", mnemonicWallet.Mnemonic)
+			fmt.Println("")
+			fmt.Println("=== First Account ===")
+			if len(mnemonicWallet.Accounts) > 0 {
+				account := mnemonicWallet.Accounts[0]
+				fmt.Printf("Address: %s\n", hex.EncodeToString(account.Address[:]))
+				fmt.Printf("Path: %s\n", account.Path)
+			}
+			fmt.Println("")
+			fmt.Printf("Wallet saved to: %s\n", walletFile)
+		},
+	}
+}
+
+// 니모닉으로 지갑 복구
+func walletRestoreCmd() *cobra.Command {
+	var mnemonic string
+
+	cmd := &cobra.Command{
+		Use:   "restore",
+		Short: "Restore wallet from mnemonic",
+		Run: func(cmd *cobra.Command, args []string) {
+			if mnemonic == "" {
+				fmt.Println("Please provide a mnemonic phrase with --mnemonic flag")
+				return
+			}
+
+			wm := wallet.NewWalletManager(walletDir)
+
+			// 기존 지갑 확인
+			walletFile := filepath.Join(walletDir, "wallet.json")
+			if _, err := os.Stat(walletFile); err == nil {
+				fmt.Println("Wallet already exists at:", walletFile)
+				fmt.Println("Please delete the existing wallet first if you want to restore.")
+				return
+			}
+
+			// 지갑 복구
+			mnemonicWallet, err := wm.RestoreWallet(mnemonic)
+			if err != nil {
+				fmt.Printf("Failed to restore wallet: %v\n", err)
+				return
+			}
+
+			// 지갑 저장
+			if err := wm.SaveWallet(); err != nil {
+				fmt.Printf("Failed to save wallet: %v\n", err)
+				return
+			}
+
+			fmt.Println("=== Wallet Restored ===")
+			fmt.Println("")
+			if len(mnemonicWallet.Accounts) > 0 {
+				account := mnemonicWallet.Accounts[0]
+				fmt.Printf("Address: %s\n", hex.EncodeToString(account.Address[:]))
+				fmt.Printf("Path: %s\n", account.Path)
+			}
+			fmt.Println("")
+			fmt.Printf("Wallet saved to: %s\n", walletFile)
+		},
+	}
+
+	cmd.Flags().StringVarP(&mnemonic, "mnemonic", "m", "", "Mnemonic phrase to restore")
+	return cmd
+}
+
+// 계정 목록 표시
+func walletListCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List all accounts in the wallet",
+		Run: func(cmd *cobra.Command, args []string) {
+			wm := wallet.NewWalletManager(walletDir)
+
+			if err := wm.LoadWalletFile(); err != nil {
+				fmt.Printf("Failed to load wallet: %v\n", err)
+				fmt.Println("Use 'wallet create' to create a new wallet.")
+				return
+			}
+
+			accounts, err := wm.GetAccounts()
+			if err != nil {
+				fmt.Printf("Failed to get accounts: %v\n", err)
+				return
+			}
+
+			fmt.Println("=== Wallet Accounts ===")
+			fmt.Println("")
+			for i, account := range accounts {
+				current := ""
+				if i == wm.Wallet.CurrentIndex {
+					current = " (current)"
+				}
+				fmt.Printf("[%d]%s\n", i, current)
+				fmt.Printf("  Address: %s\n", hex.EncodeToString(account.Address[:]))
+				fmt.Printf("  Path: %s\n", account.Path)
+				fmt.Println("")
+			}
+		},
+	}
+}
+
+// 새 계정 추가
+func walletAddAccountCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "add-account",
+		Short: "Add a new account to the wallet",
+		Run: func(cmd *cobra.Command, args []string) {
+			wm := wallet.NewWalletManager(walletDir)
+
+			if err := wm.LoadWalletFile(); err != nil {
+				fmt.Printf("Failed to load wallet: %v\n", err)
+				fmt.Println("Use 'wallet create' to create a new wallet first.")
+				return
+			}
+
+			account, err := wm.AddAccount()
+			if err != nil {
+				fmt.Printf("Failed to add account: %v\n", err)
+				return
+			}
+
+			// 지갑 저장
+			if err := wm.SaveWallet(); err != nil {
+				fmt.Printf("Failed to save wallet: %v\n", err)
+				return
+			}
+
+			fmt.Println("=== New Account Added ===")
+			fmt.Println("")
+			fmt.Printf("Index: %d\n", account.Index)
+			fmt.Printf("Address: %s\n", hex.EncodeToString(account.Address[:]))
+			fmt.Printf("Path: %s\n", account.Path)
+		},
+	}
+}
+
+// 니모닉 표시
+func walletShowMnemonicCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "show-mnemonic",
+		Short: "Show the wallet's mnemonic phrase",
+		Run: func(cmd *cobra.Command, args []string) {
+			wm := wallet.NewWalletManager(walletDir)
+
+			if err := wm.LoadWalletFile(); err != nil {
+				fmt.Printf("Failed to load wallet: %v\n", err)
+				return
+			}
+
+			mnemonic, err := wm.GetMnemonic()
+			if err != nil {
+				fmt.Printf("Failed to get mnemonic: %v\n", err)
+				return
+			}
+
+			fmt.Println("=== Wallet Mnemonic ===")
+			fmt.Println("")
+			fmt.Println("WARNING: Never share your mnemonic with anyone!")
+			fmt.Println("")
+			fmt.Printf("Mnemonic: %s\n", mnemonic)
+		},
+	}
 }

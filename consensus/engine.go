@@ -2,10 +2,10 @@ package consensus
 
 import (
 	"fmt"
-	"log"
 	"sync"
 	"time"
 
+	"github.com/abcfe/abcfe-node/common/logger"
 	"github.com/abcfe/abcfe-node/common/utils"
 	"github.com/abcfe/abcfe-node/core"
 	prt "github.com/abcfe/abcfe-node/protocol"
@@ -66,7 +66,7 @@ func (e *ConsensusEngine) Start() error {
 
 	go e.runConsensusLoop()
 
-	log.Printf("[Consensus] Engine started at height %d", height+1)
+	logger.Info("[Consensus] Engine started at height ", height+1)
 	return nil
 }
 
@@ -81,7 +81,7 @@ func (e *ConsensusEngine) Stop() {
 
 	e.running = false
 	close(e.stopCh)
-	log.Println("[Consensus] Engine stopped")
+	logger.Info("[Consensus] Engine stopped")
 }
 
 // runConsensusLoop 컨센서스 메인 루프
@@ -116,7 +116,7 @@ func (e *ConsensusEngine) runRound() {
 	// 현재 제안자 확인
 	proposer := e.consensus.GetCurrentProposer()
 	if proposer == nil {
-		log.Println("[Consensus] No proposer selected")
+		logger.Warn("[Consensus] No proposer selected")
 		e.consensus.IncrementRound()
 		return
 	}
@@ -151,20 +151,17 @@ func (e *ConsensusEngine) produceBlockSolo() {
 	// 새 블록 생성
 	newBlock := e.blockchain.SetBlock(prevHash, currentHeight+1)
 	if newBlock == nil {
-		log.Println("[Consensus] Failed to create block")
+		logger.Error("[Consensus] Failed to create block")
 		return
 	}
 
 	// 블록 추가
 	if success, err := e.blockchain.AddBlock(*newBlock); !success || err != nil {
-		log.Printf("[Consensus] Failed to add block: %v", err)
+		logger.Error("[Consensus] Failed to add block: ", err)
 		return
 	}
 
-	log.Printf("[Consensus] Block %d created (hash: %s, txs: %d)",
-		newBlock.Header.Height,
-		utils.HashToString(newBlock.Header.Hash)[:16],
-		len(newBlock.Transactions))
+	logger.Info("[Consensus] Block ", newBlock.Header.Height, " created (hash: ", utils.HashToString(newBlock.Header.Hash)[:16], ", txs: ", len(newBlock.Transactions), ")")
 
 	// 콜백 호출
 	if e.onBlockCommit != nil {
@@ -197,7 +194,7 @@ func (e *ConsensusEngine) proposeBlock() {
 	// 새 블록 생성
 	newBlock := e.blockchain.SetBlock(prevHash, currentHeight+1)
 	if newBlock == nil {
-		log.Println("[Consensus] Failed to create proposed block")
+		logger.Error("[Consensus] Failed to create proposed block")
 		return
 	}
 
@@ -207,9 +204,7 @@ func (e *ConsensusEngine) proposeBlock() {
 	e.prevotes = NewVoteSet(newBlock.Header.Height, e.consensus.CurrentRound, VoteTypePrevote)
 	e.precommits = NewVoteSet(newBlock.Header.Height, e.consensus.CurrentRound, VoteTypePrecommit)
 
-	log.Printf("[Consensus] Proposed block %d (hash: %s)",
-		newBlock.Header.Height,
-		utils.HashToString(newBlock.Header.Hash)[:16])
+	logger.Info("[Consensus] Proposed block ", newBlock.Header.Height, " (hash: ", utils.HashToString(newBlock.Header.Hash)[:16], ")")
 
 	e.consensus.mu.Lock()
 	e.consensus.State = StateVoting
@@ -227,7 +222,7 @@ func (e *ConsensusEngine) HandleProposal(height uint64, round uint32, blockHash 
 
 	// 블록 검증
 	if err := e.blockchain.ValidateBlock(*block); err != nil {
-		log.Printf("[Consensus] Invalid proposed block: %v", err)
+		logger.Error("[Consensus] Invalid proposed block: ", err)
 		return
 	}
 
@@ -291,7 +286,7 @@ func (e *ConsensusEngine) castVote(voteType VoteType, blockHash prt.Hash) {
 	hashBytes := utils.HashToBytes(blockHash)
 	sig, err := e.consensus.LocalProposer.signBlockHash(blockHash)
 	if err != nil {
-		log.Printf("[Consensus] Failed to sign vote: %v", err)
+		logger.Error("[Consensus] Failed to sign vote: ", err)
 		return
 	}
 	_ = hashBytes // 사용하지 않음
@@ -337,15 +332,12 @@ func (e *ConsensusEngine) commitBlock(block *core.Block) {
 	// 블록 추가
 	success, err := e.blockchain.AddBlock(*block)
 	if !success || err != nil {
-		log.Printf("[Consensus] Failed to commit block: %v", err)
+		logger.Error("[Consensus] Failed to commit block: ", err)
 		e.consensus.IncrementRound()
 		return
 	}
 
-	log.Printf("[Consensus] Block %d committed (hash: %s, txs: %d)",
-		block.Header.Height,
-		utils.HashToString(block.Header.Hash)[:16],
-		len(block.Transactions))
+	logger.Info("[Consensus] Block ", block.Header.Height, " committed (hash: ", utils.HashToString(block.Header.Hash)[:16], ", txs: ", len(block.Transactions), ")")
 
 	// 콜백 호출 (P2P 브로드캐스트)
 	if e.onBlockCommit != nil {

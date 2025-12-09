@@ -4,10 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/abcfe/abcfe-node/common/logger"
 )
 
 // PeerState 피어 연결 상태
@@ -162,13 +163,13 @@ func (n *Node) acceptLoop() {
 
 // handleInboundConnection 인바운드 연결 처리
 func (n *Node) handleInboundConnection(conn net.Conn) {
-	log.Println("[P2P] Inbound connection from:", conn.RemoteAddr().String())
+	logger.Debug("[P2P] Inbound connection from: ", conn.RemoteAddr().String())
 
 	n.mu.Lock()
 	if len(n.Peers) >= n.MaxPeers {
 		n.mu.Unlock()
 		conn.Close()
-		log.Println("[P2P] Max peers reached, rejecting connection")
+		logger.Warn("[P2P] Max peers reached, rejecting connection")
 		return
 	}
 	n.mu.Unlock()
@@ -188,7 +189,7 @@ func (n *Node) handleInboundConnection(conn net.Conn) {
 
 // Connect 피어에 연결
 func (n *Node) Connect(address string) error {
-	log.Println("[P2P] Connecting to peer:", address)
+	logger.Debug("[P2P] Connecting to peer: ", address)
 
 	n.mu.RLock()
 	if len(n.Peers) >= n.MaxPeers {
@@ -199,11 +200,11 @@ func (n *Node) Connect(address string) error {
 
 	conn, err := net.DialTimeout("tcp", address, 10*time.Second)
 	if err != nil {
-		log.Println("[P2P] Failed to connect to", address, ":", err)
+		logger.Debug("[P2P] Failed to connect to ", address, ": ", err)
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 
-	log.Println("[P2P] TCP connection established to:", address)
+	logger.Debug("[P2P] TCP connection established to: ", address)
 
 	peer := &Peer{
 		Address:  address,
@@ -215,12 +216,12 @@ func (n *Node) Connect(address string) error {
 
 	// 핸드셰이크 전송
 	if err := n.sendHandshake(peer); err != nil {
-		log.Println("[P2P] Failed to send handshake to", address, ":", err)
+		logger.Error("[P2P] Failed to send handshake to ", address, ": ", err)
 		conn.Close()
 		return err
 	}
 
-	log.Println("[P2P] Handshake sent to:", address)
+	logger.Debug("[P2P] Handshake sent to: ", address)
 	peer.State = PeerStateHandshaking
 	go n.handlePeer(peer)
 
@@ -295,21 +296,21 @@ func (n *Node) sendHandshake(peer *Peer) error {
 // handleHandshake 핸드셰이크 처리
 func (n *Node) handleHandshake(msg *Message, peer *Peer) {
 	if msg.Type != MsgTypeHandshake && msg.Type != MsgTypeHandshakeAck {
-		log.Println("[P2P] Unexpected message type during handshake:", msg.Type)
+		logger.Warn("[P2P] Unexpected message type during handshake: ", msg.Type)
 		return
 	}
 
 	var payload HandshakePayload
 	if err := UnmarshalPayload(msg.Payload, &payload); err != nil {
-		log.Println("[P2P] Failed to unmarshal handshake payload:", err)
+		logger.Error("[P2P] Failed to unmarshal handshake payload: ", err)
 		return
 	}
 
-	log.Println("[P2P] Received handshake from node:", payload.NodeID, "network:", payload.NetworkID)
+	logger.Debug("[P2P] Received handshake from node: ", payload.NodeID, " network: ", payload.NetworkID)
 
 	// 네트워크 ID 확인
 	if payload.NetworkID != n.NetworkID {
-		log.Println("[P2P] Network ID mismatch. Expected:", n.NetworkID, "Got:", payload.NetworkID)
+		logger.Warn("[P2P] Network ID mismatch. Expected: ", n.NetworkID, " Got: ", payload.NetworkID)
 		peer.Conn.Close()
 		return
 	}
@@ -321,13 +322,13 @@ func (n *Node) handleHandshake(msg *Message, peer *Peer) {
 
 	// ACK 응답 (인바운드인 경우)
 	if peer.Inbound && msg.Type == MsgTypeHandshake {
-		log.Println("[P2P] Sending handshake ACK to:", peer.Address)
+		logger.Debug("[P2P] Sending handshake ACK to: ", peer.Address)
 		n.sendHandshakeAck(peer)
 	}
 
 	// 피어 등록
 	n.addPeer(peer)
-	log.Println("[P2P] Peer activated:", peer.ID, "(", peer.Address, ")")
+	logger.Info("[P2P] Peer activated: ", peer.ID, " (", peer.Address, ")")
 }
 
 // sendHandshakeAck 핸드셰이크 ACK 전송
@@ -373,12 +374,12 @@ func (n *Node) Broadcast(msg *Message) {
 	}
 	n.mu.RUnlock()
 
-	log.Println("[P2P] Broadcasting message type", msg.Type, "to", len(peers), "peers")
+	logger.Debug("[P2P] Broadcasting message type ", msg.Type, " to ", len(peers), " peers")
 
 	for _, peer := range peers {
 		go func(p *Peer) {
 			if err := n.sendMessage(p, msg); err != nil {
-				log.Println("[P2P] Failed to send broadcast to", p.Address, ":", err)
+				logger.Error("[P2P] Failed to send broadcast to ", p.Address, ": ", err)
 			}
 		}(peer)
 	}

@@ -11,7 +11,11 @@
       "Bash(bash ./test_multi_node.sh:*)",
       "Bash(./abcfed:*)",
       "Bash(/usr/local/go/bin/go build:*)",
-      "Bash(/opt/homebrew/bin/go build:*)"
+      "Bash(/opt/homebrew/bin/go build:*)",
+      "Bash(sleep 4 echo \"=== Latest Block (should contain the TX) ===\" curl -s http://localhost:8000/api/v1/block/latest)",
+      "Bash(jq echo \"\" echo \"=== Mempool after block (should be empty) ===\" curl -s http://localhost:8000/api/v1/mempool/list echo \"\" echo \"\" echo \"=== Genesis address balance (should be 499,999,000) ===\" curl -s http://localhost:8000/api/v1/address/17112bdf0c4b66abcb6b9651538a36da97031cca/balance echo \"\" echo \"\" echo \"=== New address balance (should be 1000) ===\" curl -s http://localhost:8000/api/v1/address/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/balance echo \"\")",
+      "Bash(curl:*)",
+      "Bash(go version:*)"
     ],
     "deny": [],
     "ask": []

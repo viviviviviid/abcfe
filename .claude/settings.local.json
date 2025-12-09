@@ -9,7 +9,9 @@
       "Bash(pkill:*)",
       "Bash(chmod:*)",
       "Bash(bash ./test_multi_node.sh:*)",
-      "Bash(./abcfed:*)"
+      "Bash(./abcfed:*)",
+      "Bash(/usr/local/go/bin/go build:*)",
+      "Bash(/opt/homebrew/bin/go build:*)"
     ],
     "deny": [],
     "ask": []

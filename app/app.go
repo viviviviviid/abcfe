@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -111,26 +112,87 @@ func New(configPath string) (*App, error) {
 		}
 	})
 
+	// 누락된 블록 저장용 맵 (높이 -> 블록)
+	pendingBlocks := make(map[uint64]*core.Block)
+	var pendingMu sync.Mutex
+
 	// P2P에서 블록 수신 시 처리 콜백 설정
 	app.P2PService.SetBlockHandler(func(block *core.Block) {
 		// 이미 있는 블록인지 확인
 		currentHeight, _ := app.BlockChain.GetLatestHeight()
+		log.Printf("[BlockHandler] Received block height=%d, current=%d", block.Header.Height, currentHeight)
+
 		if block.Header.Height <= currentHeight {
+			log.Println("[BlockHandler] Block already exists, skipping")
+			return
+		}
+
+		// 연속된 블록인지 확인
+		if block.Header.Height > currentHeight+1 {
+			log.Printf("[BlockHandler] Missing blocks! Need height %d, got %d. Storing pending block.", currentHeight+1, block.Header.Height)
+			// 나중에 처리할 수 있도록 저장
+			pendingMu.Lock()
+			pendingBlocks[block.Header.Height] = block
+			pendingMu.Unlock()
+
+			// 누락된 블록 요청
+			peers := app.P2PService.GetPeers()
+			if len(peers) > 0 {
+				if err := app.P2PService.RequestBlocks(peers[0], currentHeight+1, block.Header.Height-1); err != nil {
+					log.Println("[BlockHandler] Failed to request missing blocks:", err)
+				} else {
+					log.Printf("[BlockHandler] Requested blocks %d to %d", currentHeight+1, block.Header.Height-1)
+				}
+			}
 			return
 		}
 
 		// 블록 검증 및 추가
+		log.Printf("[BlockHandler] Validating block height=%d", block.Header.Height)
 		if err := app.BlockChain.ValidateBlock(*block); err != nil {
+			log.Printf("[BlockHandler] Invalid received block height=%d: %v", block.Header.Height, err)
 			logger.Error("Invalid received block: ", err)
 			return
 		}
+		log.Printf("[BlockHandler] Block %d validation passed", block.Header.Height)
 
 		if success, err := app.BlockChain.AddBlock(*block); !success || err != nil {
+			log.Printf("[BlockHandler] Failed to add received block height=%d: %v", block.Header.Height, err)
 			logger.Error("Failed to add received block: ", err)
 			return
 		}
+		log.Printf("[BlockHandler] Block %d added successfully", block.Header.Height)
 
+		log.Printf("[BlockHandler] Block synced from peer: height=%d", block.Header.Height)
 		logger.Info("Block synced from peer: height=", block.Header.Height)
+
+		// 대기 중인 다음 블록 처리
+		for {
+			pendingMu.Lock()
+			nextHeight := block.Header.Height + 1
+			nextBlock, exists := pendingBlocks[nextHeight]
+			if exists {
+				delete(pendingBlocks, nextHeight)
+			}
+			pendingMu.Unlock()
+
+			if !exists {
+				break
+			}
+
+			if err := app.BlockChain.ValidateBlock(*nextBlock); err != nil {
+				log.Println("[BlockHandler] Invalid pending block:", err)
+				break
+			}
+
+			if success, err := app.BlockChain.AddBlock(*nextBlock); !success || err != nil {
+				log.Println("[BlockHandler] Failed to add pending block:", err)
+				break
+			}
+
+			log.Printf("[BlockHandler] Pending block added: height=%d", nextBlock.Header.Height)
+			block = nextBlock
+		}
 	})
 
 	return app, nil

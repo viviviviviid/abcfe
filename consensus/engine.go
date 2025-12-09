@@ -141,13 +141,11 @@ func (e *ConsensusEngine) produceBlockSolo() {
 		currentHeight = 0
 	}
 
-	// 이전 블록 해시 가져오기
+	// 이전 블록 해시 가져오기 (제네시스 블록의 해시도 포함)
 	var prevHash prt.Hash
-	if currentHeight > 0 {
-		prevBlock, err := e.blockchain.GetBlockByHeight(currentHeight)
-		if err == nil {
-			prevHash = prevBlock.Header.Hash
-		}
+	prevBlock, err := e.blockchain.GetBlockByHeight(currentHeight)
+	if err == nil {
+		prevHash = prevBlock.Header.Hash
 	}
 
 	// 새 블록 생성
@@ -189,13 +187,11 @@ func (e *ConsensusEngine) proposeBlock() {
 		currentHeight = 0
 	}
 
-	// 이전 블록 해시
+	// 이전 블록 해시 (제네시스 블록의 해시도 포함)
 	var prevHash prt.Hash
-	if currentHeight > 0 {
-		prevBlock, err := e.blockchain.GetBlockByHeight(currentHeight)
-		if err == nil {
-			prevHash = prevBlock.Header.Hash
-		}
+	prevBlock, err := e.blockchain.GetBlockByHeight(currentHeight)
+	if err == nil {
+		prevHash = prevBlock.Header.Hash
 	}
 
 	// 새 블록 생성

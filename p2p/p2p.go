@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/abcfe/abcfe-node/common/utils"
@@ -116,16 +117,24 @@ func (s *P2PService) handlePing(peer *Peer) {
 
 // handleNewBlock 새 블록 수신 처리
 func (s *P2PService) handleNewBlock(msg *Message, peer *Peer) {
+	log.Println("[P2P] Received new block message from peer:", peer.Address)
+
 	var payload NewBlockPayload
 	if err := UnmarshalPayload(msg.Payload, &payload); err != nil {
+		log.Println("[P2P] Failed to unmarshal block payload:", err)
 		return
 	}
+
+	log.Println("[P2P] Block payload - height:", payload.Height)
 
 	// 블록 역직렬화
 	var block core.Block
 	if err := utils.DeserializeData(payload.BlockData, &block, utils.SerializationFormatGob); err != nil {
+		log.Println("[P2P] Failed to deserialize block:", err)
 		return
 	}
+
+	log.Println("[P2P] Received block height:", block.Header.Height, "hash:", fmt.Sprintf("%x", block.Header.Hash[:8]))
 
 	// 블록 핸들러 호출
 	s.mu.RLock()
@@ -134,6 +143,8 @@ func (s *P2PService) handleNewBlock(msg *Message, peer *Peer) {
 
 	if handler != nil {
 		handler(&block)
+	} else {
+		log.Println("[P2P] Block handler not set!")
 	}
 }
 

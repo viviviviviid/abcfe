@@ -124,8 +124,8 @@ func (p *BlockChain) ValidateBlock(block Block) error {
 		return p.validateGenesisBlock(&block)
 	}
 
-	// 이전 블록 조회
-	prevBlock, err := p.GetBlockByHeight(block.Header.Height - 1)
+	// 이전 블록 조회 (lock 이미 획득됨)
+	prevBlock, err := p.getBlockByHeightNoLock(block.Header.Height - 1)
 	if err != nil {
 		return fmt.Errorf("failed to get prev block: %w", err)
 	}

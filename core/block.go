@@ -193,9 +193,14 @@ func (p *BlockChain) saveTxData(batch *leveldb.Batch, blk Block) error {
 
 // block height -> block data
 func (p *BlockChain) GetBlockByHeight(height uint64) (*Block, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 
+	return p.getBlockByHeightNoLock(height)
+}
+
+// getBlockByHeightNoLock lock 없이 블록 조회 (내부용)
+func (p *BlockChain) getBlockByHeightNoLock(height uint64) (*Block, error) {
 	// block height -> block hash bytes
 	heightKey := utils.GetBlockHeightKey(height)
 	blkHashBytes, err := p.db.Get(heightKey, nil)

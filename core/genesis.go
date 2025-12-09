@@ -2,11 +2,13 @@ package core
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/abcfe/abcfe-node/common/utils"
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
+
+// 제네시스 블록의 고정 타임스탬프 (2024-01-01 00:00:00 UTC)
+const GenesisTimestamp int64 = 1704067200
 
 func (p *BlockChain) SetGenesisBlock() (*Block, error) {
 	var defaultPrevHash prt.Hash
@@ -28,7 +30,7 @@ func (p *BlockChain) SetGenesisBlock() (*Block, error) {
 		PrevHash:   defaultPrevHash,
 		Version:    p.cfg.Version.Protocol,
 		Height:     0,
-		Timestamp:  time.Now().Unix(),
+		Timestamp:  GenesisTimestamp,
 		MerkleRoot: merkleRoot,
 	}
 
@@ -71,7 +73,7 @@ func (p *BlockChain) setGenesisTxs() ([]*Transaction, error) {
 	txs := []*Transaction{
 		{
 			Version:   p.cfg.Version.Transaction,
-			Timestamp: time.Now().Unix(),
+			Timestamp: GenesisTimestamp,
 			Inputs:    txIns,
 			Outputs:   txOuts,
 			Memo:      "ABCFE Chain Genesis Block",

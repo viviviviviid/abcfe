@@ -1,59 +1,50 @@
-# Go 관련
+# 바이너리
+abcfed
 *.exe
-*.exe~
 *.dll
 *.so
 *.dylib
+
+# 테스트 바이너리
 *.test
 *.out
+
+# Go 워크스페이스 파일
 go.work
 
-# IDE 관련
+# 데이터베이스
+resource/db/
+resource/db*/
+
+# 지갑 파일 (민감 정보)
+resource/wallet/
+resource/wallet*/
+
+# 로그 파일
+log/syslogs*/
+*.log
+/tmp/*.log
+
+# PID 파일
+*.pid
+/tmp/*.pid
+
+# OS 파일
+.DS_Store
+Thumbs.db
+
+# IDE 설정
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS 관련
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# 빌드 결과물
-bin/
-dist/
-build/
-
-# 로그 파일들 (폴더는 유지, 내용물만 무시)
-log/*/
-log/*.log
-log/*.log.*
-
-# 리소스 파일들 (폴더는 유지, 내용물만 무시)
-resource/*/
-resource/db/*
-resource/wallet/*
-
-# 임시 파일들
+# 임시 파일
+tmp/
+temp/
 *.tmp
-*.temp
-*.bak
-*.backup
 
-# 환경 변수 파일
-.env
-.env.local
-.env.production
-
-# 디버그 파일들
-__debug_bin* 
-
-abcfe-node
-abcfed
-
-CLAUDE.md
+# 설정 파일 (노드별 동적 생성)
+config/config_node[2-9].toml
+config/config_node[1-9][0-9].toml

@@ -2,6 +2,23 @@
 
 이 가이드는 ABCFe 블록체인 노드를 실행하고, 지갑을 생성하며, 트랜잭션을 전송하고, API 및 WebSocket을 사용하는 전체 과정을 설명합니다.
 
+## 🚀 빠른 시작
+
+**처음 시작하는 경우:**
+```bash
+# 1. 빌드
+make build
+
+# 2. 멀티 노드 자동 셋업 (추천)
+./setup_multi_nodes.sh 3
+
+# 완료! 노드가 실행 중입니다.
+```
+
+**자세한 내용은 [QUICK_START.md](QUICK_START.md)를 참고하세요.**
+
+---
+
 ## 사용자 구분
 
 - **노드 운영자**: 노드를 직접 실행하고 관리하는 사용자 (CLI 사용)
@@ -16,6 +33,7 @@
 5. [REST API 사용](#5-rest-api-사용) *(모두)*
 6. [WebSocket 실시간 알림](#6-websocket-실시간-알림) *(모두)*
 7. [멀티 노드 환경](#7-멀티-노드-환경) *(노드 운영자)*
+8. [관리 스크립트](#8-관리-스크립트) ⭐ *(노드 운영자)*
 
 ---
 
@@ -881,6 +899,116 @@ if __name__ == "__main__":
 
 ---
 
+## 8. 관리 스크립트
+
+ABCFe는 멀티 노드 환경을 쉽게 관리할 수 있는 스크립트를 제공합니다.
+
+### 8.1 전체 자동 셋업
+
+```bash
+# 한 번에 모든 것을 셋업 (가장 추천!)
+./setup_multi_nodes.sh 3
+
+# 실행 내용:
+# 1. 기존 노드 중지
+# 2. DB 초기화 (선택적)
+# 3. 지갑 생성 (3개)
+# 4. 제네시스 블록 셋업
+# 5. 노드 시작 (3개)
+# 6. 상태 확인
+```
+
+### 8.2 개별 스크립트
+
+#### 지갑 생성
+```bash
+./create_wallets.sh 3
+
+# Node 1: ./resource/wallet/wallet.json
+# Node 2: ./resource/wallet2/wallet.json
+# Node 3: ./resource/wallet3/wallet.json
+```
+
+#### 제네시스 블록 셋업
+```bash
+./setup_genesis.sh 3
+
+# 실행 내용:
+# 1. Boot 노드(Node 1)에서 제네시스 블록 생성
+# 2. 다른 노드들에게 제네시스 블록 복사
+# 3. 모든 노드가 동일한 체인에서 시작하도록 보장
+```
+
+#### 노드 시작
+```bash
+./start_multi_nodes.sh 3
+
+# Node 1: Port 30303, REST 8000 (Boot/Producer)
+# Node 2: Port 30304, REST 8001 (Validator/Sync)
+# Node 3: Port 30305, REST 8002 (Validator/Sync)
+```
+
+#### 상태 확인
+```bash
+./check_nodes.sh
+
+# 출력 예시:
+# Node 1 (REST: 8000): ✓ 실행 중 (Height: 567)
+# Node 2 (REST: 8001): ✓ 실행 중 (Height: 567)
+# Node 3 (REST: 8002): ✓ 실행 중 (Height: 567)
+# ✓ 모든 노드가 동기화되었습니다 (Height: 567)
+```
+
+#### 노드 중지
+```bash
+./stop_all_nodes.sh
+
+# 모든 abcfed 프로세스 종료
+```
+
+#### 데이터 정리
+```bash
+./clean_all.sh
+
+# DB 및 로그 삭제 (지갑은 유지)
+```
+
+### 8.3 사용 시나리오
+
+#### 처음 시작
+```bash
+./setup_multi_nodes.sh 3
+```
+
+#### 노드 재시작
+```bash
+./stop_all_nodes.sh
+./start_multi_nodes.sh 3
+```
+
+#### 완전 초기화
+```bash
+./clean_all.sh
+./setup_multi_nodes.sh 3
+```
+
+#### 노드 추가 (2개 → 3개)
+```bash
+# 새 지갑 생성
+./abcfed wallet create --wallet-dir=./resource/wallet3
+
+# 제네시스 블록 복사
+./setup_genesis.sh 3
+
+# 모든 노드 재시작
+./stop_all_nodes.sh
+./start_multi_nodes.sh 3
+```
+
+**자세한 내용은 [README_SCRIPTS.md](README_SCRIPTS.md)를 참고하세요.**
+
+---
+
 ## 7. 멀티 노드 환경
 
 ### 7.1 두 번째 노드 설정
@@ -1086,8 +1214,18 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
 
 ## 10. 추가 자료
 
-- **CLAUDE.md**: 개발자용 아키텍처 및 명령어 가이드
-- **config/config.toml**: 노드 설정 파일
+### 문서
+- **[README.md](README.md)** - 프로젝트 개요
+- **[QUICK_START.md](QUICK_START.md)** - 1분 빠른 시작 가이드
+- **[README_SCRIPTS.md](README_SCRIPTS.md)** - 스크립트 상세 가이드
+- **[CLAUDE.md](CLAUDE.md)** - 개발자용 아키텍처 가이드
+
+### 설정 파일
+- **config/config.toml**: 메인 노드 설정
+- **config/dev.config.toml**: 개발 환경 설정
+- **config/prod.config.toml**: 프로덕션 환경 설정
+
+### 빌드
 - **Makefile**: 빌드 및 테스트 명령어
 
 ---

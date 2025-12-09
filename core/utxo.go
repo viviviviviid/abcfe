@@ -185,3 +185,19 @@ func (p *BlockChain) CalBalanceUtxo(utxos []*UTXO) uint64 {
 	}
 	return amount
 }
+
+// GetUtxoByTxIdAndIdx TxID와 OutputIndex로 특정 UTXO 조회
+func (p *BlockChain) GetUtxoByTxIdAndIdx(txId prt.Hash, outputIndex uint64) (*UTXO, error) {
+	utxoKey := utils.GetUtxoKey(txId, int(outputIndex))
+	utxoBytes, err := p.db.Get(utxoKey, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get utxo data from db: %w", err)
+	}
+
+	var utxo UTXO
+	if err := utils.DeserializeData(utxoBytes, &utxo, utils.SerializationFormatGob); err != nil {
+		return nil, fmt.Errorf("failed to deserialize utxo data: %w", err)
+	}
+
+	return &utxo, nil
+}

@@ -80,9 +80,9 @@ func StringToSignature(str string) (prt.Signature, error) {
 		return prt.Signature{}, fmt.Errorf("잘못된 서명 문자열: %v", err)
 	}
 
-	// 서명 길이 검증
-	if len(bytes) != 65 {
-		return prt.Signature{}, fmt.Errorf("잘못된 서명 길이: %d (65바이트 필요)", len(bytes))
+	// 서명 길이 검증 (ECDSA ASN.1 서명은 가변 길이, 최대 72바이트)
+	if len(bytes) > 72 {
+		return prt.Signature{}, fmt.Errorf("잘못된 서명 길이: %d (최대 72바이트)", len(bytes))
 	}
 
 	var sig prt.Signature

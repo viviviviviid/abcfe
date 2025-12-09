@@ -15,7 +15,13 @@
       "Bash(sleep 4 echo \"=== Latest Block (should contain the TX) ===\" curl -s http://localhost:8000/api/v1/block/latest)",
       "Bash(jq echo \"\" echo \"=== Mempool after block (should be empty) ===\" curl -s http://localhost:8000/api/v1/mempool/list echo \"\" echo \"\" echo \"=== Genesis address balance (should be 499,999,000) ===\" curl -s http://localhost:8000/api/v1/address/17112bdf0c4b66abcb6b9651538a36da97031cca/balance echo \"\" echo \"\" echo \"=== New address balance (should be 1000) ===\" curl -s http://localhost:8000/api/v1/address/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/balance echo \"\")",
       "Bash(curl:*)",
-      "Bash(go version:*)"
+      "Bash(go version:*)",
+      "Bash(cat:*)",
+      "Bash(/opt/homebrew/bin/go version:*)",
+      "Bash(/opt/homebrew/bin/go test:*)",
+      "Bash(pgrep:*)",
+      "Bash(/opt/homebrew/bin/go get:*)",
+      "Bash(timeout 10 websocat:*)"
     ],
     "deny": [],
     "ask": []

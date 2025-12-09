@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/abcfe/abcfe-node/common/crypto"
 	"github.com/abcfe/abcfe-node/common/utils"
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
@@ -308,4 +309,142 @@ func buildMerkleTree(hashes []prt.Hash) prt.Hash {
 	}
 
 	return buildMerkleTree(nextLevel)
+}
+
+// CreateSignedTx 서명된 트랜잭션 생성
+func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, memo string, data []byte, txType uint8, privateKeyBytes, publicKeyBytes []byte) (*Transaction, error) {
+	utxos, err := p.GetUtxoList(from, true)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get UTXO list: %w", err)
+	}
+
+	balance := p.CalBalanceUtxo(utxos)
+	if balance < amount {
+		return nil, fmt.Errorf("not enough balance: have %d, need %d", balance, amount)
+	}
+
+	// TX Input/Output 구성
+	var txIns []*TxInput
+	var total uint64
+
+	for _, utxo := range utxos {
+		if total >= amount {
+			break
+		}
+		txIn := &TxInput{
+			TxID:        utxo.TxId,
+			OutputIndex: utxo.OutputIndex,
+			PublicKey:   publicKeyBytes,
+			// Signature는 나중에 설정
+		}
+		txIns = append(txIns, txIn)
+		total += utxo.TxOut.Amount
+	}
+
+	if total < amount {
+		return nil, fmt.Errorf("not enough balance after collecting UTXOs")
+	}
+
+	// TX Output 구성
+	var txOuts []*TxOutput
+	txOuts = append(txOuts, &TxOutput{
+		Address: to,
+		Amount:  amount,
+		TxType:  txType,
+	})
+
+	// 거스름돈
+	if total > amount {
+		txOuts = append(txOuts, &TxOutput{
+			Address: from,
+			Amount:  total - amount,
+			TxType:  txType,
+		})
+	}
+
+	// 트랜잭션 생성
+	tx := &Transaction{
+		Version:   p.cfg.Version.Transaction,
+		Timestamp: time.Now().Unix(),
+		Inputs:    txIns,
+		Outputs:   txOuts,
+		Memo:      memo,
+		Data:      data,
+	}
+
+	// TX ID 계산 (서명 전에 계산)
+	tx.ID = utils.Hash(tx)
+
+	// 각 입력에 서명
+	privateKey, err := crypto.BytesToPrivateKey(privateKeyBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	txHashBytes := utils.HashToBytes(tx.ID)
+	for i := range tx.Inputs {
+		sig, err := crypto.SignData(privateKey, txHashBytes)
+		if err != nil {
+			return nil, fmt.Errorf("failed to sign input[%d]: %w", i, err)
+		}
+		tx.Inputs[i].Signature = sig
+	}
+
+	return tx, nil
+}
+
+// ValidateTxSignatures 트랜잭션의 모든 입력 서명 검증
+func (p *BlockChain) ValidateTxSignatures(tx *Transaction) error {
+	if tx == nil {
+		return fmt.Errorf("transaction is nil")
+	}
+
+	// Coinbase TX는 서명 검증 불필요
+	if len(tx.Inputs) == 0 {
+		return nil
+	}
+
+	// TX 해시 계산 (서명 검증용)
+	// 서명은 TX ID를 기준으로 함
+	txHashBytes := utils.HashToBytes(tx.ID)
+
+	for i, input := range tx.Inputs {
+		// 공개키가 없으면 에러
+		if len(input.PublicKey) == 0 {
+			return fmt.Errorf("input[%d]: public key is empty", i)
+		}
+
+		// 서명 검증
+		valid, err := crypto.VerifySignatureWithBytes(input.PublicKey, txHashBytes, input.Signature)
+		if err != nil {
+			return fmt.Errorf("input[%d]: signature verification error: %w", i, err)
+		}
+		if !valid {
+			return fmt.Errorf("input[%d]: invalid signature", i)
+		}
+
+		// UTXO 소유권 검증 (공개키 -> 주소 -> UTXO 소유자 확인)
+		pubKey, err := crypto.BytesToPublicKey(input.PublicKey)
+		if err != nil {
+			return fmt.Errorf("input[%d]: failed to parse public key: %w", i, err)
+		}
+
+		signerAddr, err := crypto.PublicKeyToAddress(pubKey)
+		if err != nil {
+			return fmt.Errorf("input[%d]: failed to derive address from public key: %w", i, err)
+		}
+
+		// 참조하는 UTXO 가져오기
+		utxo, err := p.GetUtxoByTxIdAndIdx(input.TxID, input.OutputIndex)
+		if err != nil {
+			return fmt.Errorf("input[%d]: failed to get referenced UTXO: %w", i, err)
+		}
+
+		// UTXO 소유자와 서명자 주소 비교
+		if signerAddr != utxo.TxOut.Address {
+			return fmt.Errorf("input[%d]: signer address does not match UTXO owner", i)
+		}
+	}
+
+	return nil
 }

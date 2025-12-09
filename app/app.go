@@ -100,14 +100,19 @@ func New(configPath string) (*App, error) {
 	}
 
 	// REST API 서버 초기화
-	app.restServer = rest.NewServer(app.Conf.Server.RestPort, app.BlockChain)
+	app.restServer = rest.NewServer(app.Conf.Server.RestPort, app.BlockChain, app.Wallet, app.Consensus)
 
-	// 블록 커밋 시 P2P 브로드캐스트 콜백 설정
+	// 블록 커밋 시 P2P 브로드캐스트 및 WebSocket 알림 콜백 설정
 	app.ConsensusEngine.SetBlockCommitCallback(func(block *core.Block) {
+		// P2P 브로드캐스트
 		if app.P2PService != nil && app.P2PService.IsRunning() {
 			if err := app.P2PService.BroadcastBlock(block); err != nil {
 				logger.Error("Failed to broadcast block: ", err)
 			}
+		}
+		// WebSocket 브로드캐스트
+		if wsHub := app.restServer.GetWSHub(); wsHub != nil {
+			wsHub.BroadcastNewBlock(block)
 		}
 	})
 

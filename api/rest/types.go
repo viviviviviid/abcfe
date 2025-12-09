@@ -46,3 +46,42 @@ type SubmitTxReq struct {
 	Memo   string `json:"memo"`
 	Data   []byte `json:"data"`
 }
+
+// 서명된 트랜잭션 제출 요청 (클라이언트가 서명)
+type SubmitSignedTxReq struct {
+	Version   string           `json:"version"`
+	Timestamp int64            `json:"timestamp"`
+	Inputs    []SignedTxInput  `json:"inputs"`
+	Outputs   []TxOutputReq    `json:"outputs"`
+	Memo      string           `json:"memo"`
+	Data      []byte           `json:"data"`
+}
+
+type SignedTxInput struct {
+	TxID        string `json:"txId"`        // hex string
+	OutputIndex uint64 `json:"outputIndex"`
+	Signature   string `json:"signature"`   // hex string
+	PublicKey   string `json:"publicKey"`   // hex string
+}
+
+type TxOutputReq struct {
+	Address string `json:"address"` // hex string
+	Amount  uint64 `json:"amount"`
+	TxType  uint8  `json:"txType"`
+}
+
+// 서버 지갑으로 전송 요청
+type SendTxReq struct {
+	AccountIndex int    `json:"accountIndex"` // 지갑 계정 인덱스 (기본 0)
+	To           string `json:"to"`
+	Amount       uint64 `json:"amount"`
+	Memo         string `json:"memo"`
+	Data         []byte `json:"data"`
+}
+
+// 지갑 계정 응답
+type WalletAccountResp struct {
+	Index   int    `json:"index"`
+	Address string `json:"address"`
+	Path    string `json:"path"`
+}

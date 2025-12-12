@@ -130,7 +130,7 @@ level = "local"
 serviceName = "abcfe-poa-node-1"
 port = 10000
 mode = "boot"
-networkID = "abcfe-poa-test"
+networkID = "abcfe-mainnet"
 blockProducer = true
 
 [logInfo]
@@ -153,7 +153,7 @@ protocol = "1.0.0"
 transaction = "1.0.0"
 
 [genesis]
-SystemAddresses = ["17112bdf0c4b66abcb6b9651538a36da97031cca"]
+SystemAddresses = ["d79d745230218fc50118c59b0ee2c73934768a5f"]
 SystemBalances = [500000000]
 
 [server]
@@ -178,7 +178,7 @@ level = "local"
 serviceName = "abcfe-poa-node-${i}"
 port = $((10000 + i - 1))
 mode = "validator"
-networkID = "abcfe-poa-test"
+networkID = "abcfe-mainnet"
 blockProducer = true
 
 [logInfo]
@@ -201,7 +201,7 @@ protocol = "1.0.0"
 transaction = "1.0.0"
 
 [genesis]
-SystemAddresses = ["17112bdf0c4b66abcb6b9651538a36da97031cca"]
+SystemAddresses = ["d79d745230218fc50118c59b0ee2c73934768a5f"]
 SystemBalances = [500000000]
 
 [server]
@@ -229,7 +229,7 @@ level = "local"
 serviceName = "abcfe-poa-genesis"
 port = 10000
 mode = "boot"
-networkID = "abcfe-poa-test"
+networkID = "abcfe-mainnet"
 blockProducer = false
 
 [logInfo]
@@ -252,7 +252,7 @@ protocol = "1.0.0"
 transaction = "1.0.0"
 
 [genesis]
-SystemAddresses = ["17112bdf0c4b66abcb6b9651538a36da97031cca"]
+SystemAddresses = ["d79d745230218fc50118c59b0ee2c73934768a5f"]
 SystemBalances = [500000000]
 
 [server]

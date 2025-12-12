@@ -68,11 +68,27 @@ func (v *Validator) SignBlock(blockHash prt.Hash, privateKeyBytes []byte) (prt.S
 func (v *Validator) ValidateBlockSignature(blockHash prt.Hash, sig prt.Signature) bool {
 	publicKey, err := crypto.BytesToPublicKey(v.PublicKey)
 	if err != nil {
+		fmt.Printf("[DEBUG] ValidateBlockSignature: failed to parse public key for validator %s: %v\n", utils.AddressToString(v.Address), err)
+		fmt.Printf("[DEBUG] PublicKey bytes (hex): %x\n", v.PublicKey)
+		fmt.Printf("[DEBUG] PublicKey len: %d\n", len(v.PublicKey))
 		return false
 	}
 
 	hashBytes := utils.HashToBytes(blockHash)
-	return crypto.VerifySignature(publicKey, hashBytes, sig)
+	result := crypto.VerifySignature(publicKey, hashBytes, sig)
+	if !result {
+		// 서명의 실제 길이 찾기 (trailing zeros 제거)
+		sigLen := len(sig)
+		for sigLen > 0 && sig[sigLen-1] == 0 {
+			sigLen--
+		}
+		fmt.Printf("[DEBUG] ValidateBlockSignature FAILED:\n")
+		fmt.Printf("[DEBUG]   Validator: %s\n", utils.AddressToString(v.Address))
+		fmt.Printf("[DEBUG]   BlockHash: %s\n", utils.HashToString(blockHash))
+		fmt.Printf("[DEBUG]   Signature (full, len=%d, actual=%d): %x\n", len(sig), sigLen, sig[:sigLen])
+		fmt.Printf("[DEBUG]   PublicKey (full, len=%d): %x\n", len(v.PublicKey), v.PublicKey)
+	}
+	return result
 }
 
 // AddValidator 검증자 추가

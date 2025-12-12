@@ -32,7 +32,9 @@
       "Bash(done)",
       "Bash(make build:*)",
       "Bash(bash ./test_poa.sh:*)",
-      "Bash(./test_transaction.sh:*)"
+      "Bash(./test_transaction.sh:*)",
+      "Bash(./clean_all.sh:*)",
+      "Bash(tee:*)"
     ],
     "deny": [],
     "ask": []

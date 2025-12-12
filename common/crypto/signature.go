@@ -36,13 +36,17 @@ func VerifySignature(publicKey *ecdsa.PublicKey, data []byte, sig prt.Signature)
 		return false
 	}
 
-	// 실제 서명 길이 찾기 (trailing zeros 제거)
-	sigLen := len(sig)
-	for sigLen > 0 && sig[sigLen-1] == 0 {
-		sigLen--
+	// ASN.1 DER 형식에서 실제 서명 길이 파싱
+	// DER: 30 <len> <r> <s>
+	// 30 = SEQUENCE tag
+	// <len> = 서명 데이터 길이 (r + s 부분)
+	if len(sig) < 2 || sig[0] != 0x30 {
+		return false
 	}
 
-	if sigLen == 0 {
+	// 실제 서명 길이 = 2 (tag + length) + 내용 길이
+	sigLen := 2 + int(sig[1])
+	if sigLen > len(sig) {
 		return false
 	}
 

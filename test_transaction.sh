@@ -21,7 +21,7 @@ NC='\033[0m' # No Color
 API_BASE="http://localhost:8000/api/v1"
 
 # 주소 정의
-GENESIS_ADDR="17112bdf0c4b66abcb6b9651538a36da97031cca"
+GENESIS_ADDR="d79d745230218fc50118c59b0ee2c73934768a5f"
 USER1_ADDR="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 USER2_ADDR="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 

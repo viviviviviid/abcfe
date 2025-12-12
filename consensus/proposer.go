@@ -66,7 +66,19 @@ func (p *Proposer) signBlockHash(blockHash prt.Hash) (prt.Signature, error) {
 	}
 
 	hashBytes := utils.HashToBytes(blockHash)
-	return crypto.SignData(privateKey, hashBytes)
+	sig, err := crypto.SignData(privateKey, hashBytes)
+	if err != nil {
+		return prt.Signature{}, err
+	}
+
+	// 서명 실제 길이 확인
+	sigLen := len(sig)
+	for sigLen > 0 && sig[sigLen-1] == 0 {
+		sigLen--
+	}
+	fmt.Printf("[DEBUG] signBlockHash: hash=%s sig_len=%d actual_len=%d sig=%x\n",
+		utils.HashToString(blockHash), len(sig), sigLen, sig[:sigLen])
+	return sig, nil
 }
 
 // VerifyProposal 블록 제안 검증

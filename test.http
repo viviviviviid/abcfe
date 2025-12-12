@@ -14,7 +14,7 @@ GET http://localhost:8000/api/v1/blocks
 GET http://localhost:8000/api/v1/block/height/0
 
 ### 블록 높이로 조회
-GET http://localhost:8001/api/v1/block/height/327
+GET http://localhost:8001/api/v1/block/height/0
 
 ### 블록 해시로 조회
 GET http://localhost:8000/api/v1/block/hash/1b924bef65123372e27e00c780d119b1b8b19d85c133b61446d61ee67a682690
@@ -26,7 +26,7 @@ GET http://localhost:8000/api/v1/blocks?page=1&limit=10
 GET http://localhost:8000/api/v1/tx/00e1480d3654d58167f04f04d7a3fc969b154a3362087525c614db7304ae3bbe
 
 ### 주소 잔액 조회
-GET http://localhost:8000/api/v1/address/17112bdf0c4b66abcb6b9651538a36da97031cca/balance
+GET http://localhost:8000/api/v1/address/d79d745230218fc50118c59b0ee2c73934768a5f/balance
 
 ### 주소 UTXO 조회
 GET http://localhost:8000/api/v1/address/17112bdf0c4b66abcb6b9651538a36da97031cca/utxo

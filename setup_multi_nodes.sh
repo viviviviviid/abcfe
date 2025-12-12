@@ -90,6 +90,6 @@ echo -e "\033[1;36m=== 유용한 명령어 ===[0m"
 echo "상태 확인:        ./check_nodes.sh"
 echo "노드 중지:        ./stop_all_nodes.sh"
 echo "노드 재시작:      ./start_multi_nodes.sh $NODE_COUNT"
-echo "로그 확인:        tail -f /tmp/abcfed_node1.log"
+echo "로그 확인:        tail -f ./log/syslog/_2025-12-12.log"
 echo ""
 

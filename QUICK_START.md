@@ -58,8 +58,8 @@ make build
 
 ### 로그 확인
 ```bash
-tail -f /tmp/abcfed_node1.log
-tail -f /tmp/abcfed_node2.log
+tail -f ./log/syslog/_2025-12-12.log
+tail -f ./log/syslog2/_2025-12-12.log
 ```
 
 ### 완전 초기화

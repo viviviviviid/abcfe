@@ -41,11 +41,12 @@ abcfe-node/
 │   ├── utxo.go        # UTXO 모델
 │   ├── mempool.go     # 트랜잭션 풀
 │   └── validate.go    # 검증 로직
-├── consensus/         # PoS 컨센서스
-│   ├── consensus.go   # 컨센서스 상태
-│   ├── engine.go      # 컨센서스 엔진 (블록 생성)
-│   ├── proposer.go    # 제안자 선출
-│   └── validator.go   # 검증자 관리
+├── consensus/         # PoA 컨센서스
+│   ├── consensus.go   # 컨센서스 상태 + ProposerValidator 구현
+│   ├── engine.go      # 컨센서스 엔진 (블록 생성 + 서명)
+│   ├── proposer.go    # 제안자 서명 생성
+│   ├── selection.go   # 제안자 선출 (라운드 로빈)
+│   └── validator.go   # 검증자 관리 + 서명 검증
 ├── p2p/               # P2P 네트워크
 │   ├── p2p.go         # P2P 서비스
 │   ├── node.go        # 노드 및 피어 관리
@@ -94,14 +95,30 @@ type BlockChain struct {
 - RWMutex로 동시 읽기/쓰기 보호
 
 #### 3. Consensus (consensus/)
-- **PoS (Proof of Stake)** 기반
+- **PoA (Proof of Authority)** 기반
 - 3초마다 새 블록 생성
-- 제안자 선출: 스테이킹 가중치 기반 랜덤
-- 검증자 관리 및 로테이션
+- 제안자 선출: **라운드 로빈** (`height % len(validators)`)
+- 검증자: config 파일에서 고정 로드
+- 블록에 **제안자 주소 + 서명** 포함
 
 ```go
+// 블록 구조 (PoA 정보 포함)
+type Block struct {
+    Header       BlockHeader
+    Transactions []*Transaction
+    Proposer     Address    // 블록 제안자 주소
+    Signature    Signature  // 제안자의 블록 해시 서명
+}
+
 // 블록 생성 주기
 ticker := time.NewTicker(3 * time.Second)
+```
+
+**PoA 검증 흐름:**
+```
+1. 제안자 주소가 비어있지 않은지 확인
+2. 제안자가 해당 높이의 예상 제안자인지 확인 (라운드 로빈)
+3. 제안자의 서명이 유효한지 확인 (공개키로 검증)
 ```
 
 #### 4. P2P Network (p2p/)
@@ -180,25 +197,31 @@ tx:<txid>                 -> 트랜잭션
 
 ## 🔄 핵심 플로우
 
-### 블록 생성 플로우
+### 블록 생성 플로우 (PoA)
 ```
 1. Consensus Engine (3초 타이머)
    ↓
-2. Mempool에서 트랜잭션 선택
+2. 라운드 로빈으로 제안자 선택 (height % validators)
    ↓
-3. 머클 루트 계산
+3. 내가 제안자인 경우에만 블록 생성
    ↓
-4. 블록 헤더 구성 (해시, 높이, 타임스탬프)
+4. Mempool에서 트랜잭션 선택
    ↓
-5. 블록 해시 계산
+5. 머클 루트 계산
    ↓
-6. 블록 검증
+6. 블록 헤더 구성 (해시, 높이, 타임스탬프)
    ↓
-7. BlockChain에 추가 (DB 저장)
+7. 블록 해시 계산 (Header만으로)
    ↓
-8. P2P 브로드캐스트
+8. 제안자 주소 설정 + 블록 해시에 서명
    ↓
-9. WebSocket 알림
+9. 블록 검증 (제안자/서명 포함)
+   ↓
+10. BlockChain에 추가 (DB 저장)
+   ↓
+11. P2P 브로드캐스트
+   ↓
+12. WebSocket 알림
 ```
 
 ### P2P 동기화 플로우
@@ -336,14 +359,18 @@ Transaction Output (TxOutput):
 Balance = Σ(해당 주소의 모든 UTXO)
 ```
 
-### 블록 검증
+### 블록 검증 (11단계)
 1. **이전 해시 검증**: `PrevHash == 이전 블록 Hash`
 2. **머클 루트 검증**: `MerkleRoot == calculateMerkleRoot(Txs)`
-3. **블록 해시 검증**: `Hash == utils.Hash(Block)`
+3. **블록 해시 검증**: `Hash == utils.Hash(Header)` (Header만으로 계산)
 4. **높이 연속성**: `Height == 이전 Height + 1`
-5. **타임스탬프**: `Timestamp > 이전 Timestamp`
-6. **트랜잭션 검증**: UTXO 존재, 서명, 잔액
-7. **중복 방지**: 같은 UTXO 이중 사용 검사
+5. **타임스탬프**: `Timestamp >= 이전 Timestamp`
+6. **제안자 주소 검증**: `Proposer != empty` (PoA)
+7. **제안자 서명 검증**: 유효한 검증자 + 유효한 서명 (PoA)
+8. **트랜잭션 개수**: `len(Txs) <= MaxTxsPerBlock`
+9. **중복 트랜잭션**: 같은 TX ID 중복 방지
+10. **중복 UTXO**: 같은 블록 내 동일 UTXO 사용 방지
+11. **각 트랜잭션 검증**: UTXO 존재, 서명, 잔액
 
 ### 트랜잭션 검증
 1. **UTXO 존재**: Input이 참조하는 UTXO가 존재하는가?
@@ -436,6 +463,49 @@ curl http://localhost:8001/api/v1/status
 - `start_multi_nodes.sh` - 노드 시작
 - `check_nodes.sh` - 상태 확인
 
+## 🔐 PoA 컨센서스 구현 현황
+
+### ✅ 완료된 항목
+| 항목 | 파일 | 설명 |
+|------|------|------|
+| Block에 Proposer/Signature | `core/block.go` | 제안자 주소 + 서명 필드 |
+| 블록 생성 시 서명 | `consensus/engine.go` | `proposeBlock()`, `produceBlockSolo()` |
+| 제안자/서명 검증 | `core/validate.go` | `ValidateProposer()`, `ValidateProposerSignature()` |
+| ProposerValidator 인터페이스 | `core/blockchain.go` | 순환 참조 없이 검증 분리 |
+| Consensus 인터페이스 구현 | `consensus/consensus.go` | `ValidateProposerSignature()`, `IsValidProposer()` |
+| API 응답 컨센서스 정보 | `api/rest/handler.go` | `proposer`, `signature` 필드 |
+| 라운드 로빈 제안자 선택 | `consensus/selection.go` | `height % len(validators)` |
+| P2P 블록 동기화 + 검증 | `app/app.go` | 블록 수신 시 PoA 검증 |
+
+### ❌ 미구현 항목
+| 항목 | 설명 | 우선순위 |
+|------|------|----------|
+| 멀티 검증자 서명 (BFT) | 2/3 검증자 서명 수집 | 낮음 |
+| 검증자 동적 추가/제거 | 현재 config 고정 | 중간 |
+| 슬래싱 메커니즘 | 제안자 미이행 패널티 | 중간 |
+| 에포크 기반 검증자 교체 | 주기적 업데이트 | 낮음 |
+
+### 주요 코드 위치
+```go
+// 블록 생성 + 서명 (consensus/engine.go)
+func (e *ConsensusEngine) proposeBlock() {
+    newBlock := e.blockchain.SetBlock(prevHash, height, proposerAddr)
+    sig, _ := e.consensus.LocalProposer.signBlockHash(newBlock.Header.Hash)
+    newBlock.SignBlock(sig)
+}
+
+// 제안자 검증 (consensus/consensus.go)
+func (c *Consensus) IsValidProposer(proposer, height) bool {
+    expectedProposer := c.Selector.SelectProposer(height, 0)
+    return expectedProposer.Address == proposer
+}
+
+// 서명 검증 (consensus/validator.go)
+func (v *Validator) ValidateBlockSignature(blockHash, sig) bool {
+    return crypto.VerifySignature(publicKey, hashBytes, sig)
+}
+```
+
 ## 💡 개발 팁
 
 1. **동시성**: BlockChain은 `sync.RWMutex`로 보호됨
@@ -444,6 +514,8 @@ curl http://localhost:8001/api/v1/status
 4. **버퍼 크기**: P2P 메시지 버퍼 10MB (대용량 블록 전송)
 5. **블록 동기화**: 최대 100개 블록씩 전송
 6. **에러 처리**: 모든 에러는 로그 출력 후 처리
+7. **블록 해시**: Header만으로 계산 (JSON 직렬화)
+8. **PoA 검증**: `ProposerValidator` 인터페이스로 순환 참조 방지
 
 ---
 

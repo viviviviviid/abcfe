@@ -31,7 +31,8 @@
       "Bash(do echo -n \"Node $i: \")",
       "Bash(done)",
       "Bash(make build:*)",
-      "Bash(bash ./test_poa.sh:*)"
+      "Bash(bash ./test_poa.sh:*)",
+      "Bash(./test_transaction.sh:*)"
     ],
     "deny": [],
     "ask": []

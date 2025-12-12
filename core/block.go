@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/abcfe/abcfe-node/common/logger"
 	"github.com/abcfe/abcfe-node/common/utils"
 	prt "github.com/abcfe/abcfe-node/protocol"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -30,7 +31,31 @@ type BlockHeader struct {
 
 func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Address) *Block {
 	// 메모리 풀에서 트랜잭션 가져오기
-	txs := p.Mempool.GetTxs()
+	candidateTxs := p.Mempool.GetTxs()
+
+	// logger.Info("[SetBlock] Mempool has ", len(candidateTxs), " candidate TXs")
+
+	// 유효한 트랜잭션만 필터링 (서명 검증 포함)
+	var validTxs []*Transaction
+	var invalidTxIds []prt.Hash
+	for _, tx := range candidateTxs {
+		if err := p.ValidateTransaction(tx); err != nil {
+			// 검증 실패한 트랜잭션은 멤풀에서 제거 예정
+			logger.Warn("[SetBlock] TX validation failed: ", utils.HashToString(tx.ID)[:16], " error: ", err)
+			invalidTxIds = append(invalidTxIds, tx.ID)
+			continue
+		}
+		logger.Info("[SetBlock] TX validated: ", utils.HashToString(tx.ID)[:16])
+		validTxs = append(validTxs, tx)
+	}
+
+	// 검증 실패한 트랜잭션은 멤풀에서 제거
+	for _, txId := range invalidTxIds {
+		logger.Warn("[SetBlock] Removing invalid TX from mempool: ", utils.HashToString(txId)[:16])
+		p.Mempool.DelTx(txId)
+	}
+
+	txs := validTxs
 
 	// 머클 루트 계산
 	merkleRoot := calculateMerkleRoot(txs)

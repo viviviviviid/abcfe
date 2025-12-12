@@ -42,8 +42,9 @@ func setupRouter(blockchain *core.BlockChain, walletMgr *wallet.WalletManager, w
 	apiRouter.HandleFunc("/block/hash/{hash}", GetBlockByHash(blockchain)).Methods("GET")
 
 	// 트랜잭션 관련 API
-	apiRouter.HandleFunc("/tx", SubmitTransferTx(blockchain)).Methods("POST")            // 기존: 서명 없이 tx to mempool (테스트용)
-	apiRouter.HandleFunc("/tx/signed", SubmitSignedTx(blockchain)).Methods("POST")       // 클라이언트가 서명한 raw TX 제출
+	// 주의: /tx (서명 없이 전송)는 보안 취약점으로 제거됨
+	// 대신 /tx/signed (클라이언트 서명) 또는 /tx/send (서버 지갑 서명)를 사용
+	apiRouter.HandleFunc("/tx/signed", SubmitSignedTx(blockchain)).Methods("POST")            // 클라이언트가 서명한 raw TX 제출
 	apiRouter.HandleFunc("/tx/send", SendTxWithWallet(blockchain, walletMgr)).Methods("POST") // 서버 지갑으로 서명하여 전송
 	apiRouter.HandleFunc("/tx/{txid}", GetTx(blockchain)).Methods("GET")
 

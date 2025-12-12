@@ -34,7 +34,8 @@
       "Bash(bash ./test_poa.sh:*)",
       "Bash(./test_transaction.sh:*)",
       "Bash(./clean_all.sh:*)",
-      "Bash(tee:*)"
+      "Bash(tee:*)",
+      "Bash(go run:*)"
     ],
     "deny": [],
     "ask": []

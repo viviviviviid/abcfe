@@ -16,6 +16,7 @@ import (
 	"github.com/abcfe/abcfe-node/consensus"
 	"github.com/abcfe/abcfe-node/core"
 	"github.com/abcfe/abcfe-node/p2p"
+	prt "github.com/abcfe/abcfe-node/protocol"
 	"github.com/abcfe/abcfe-node/storage"
 	"github.com/abcfe/abcfe-node/wallet"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -73,10 +74,20 @@ func New(configPath string) (*App, error) {
 		return nil, err
 	}
 
+	// BlockProducer인 경우 검증자로 등록
+	if cfg.Common.BlockProducer {
+		account := wallet.Wallet.Accounts[0]
+		if err := cons.RegisterValidator(account.Address, account.PublicKey, account.PrivateKey); err != nil {
+			logger.Error("Failed to register validator: ", err)
+			return nil, err
+		}
+		logger.Info("Registered as validator: ", crypto.AddressTo0xPrefixString(account.Address))
+	}
+
 	// Consensus Engine 초기화
 	consEngine := consensus.NewConsensusEngine(cons, bc)
 
-	// P2P 초기화
+	// P2P 초기화 (먼저 생성해야 ConsensusEngine에 연결 가능)
 	p2pService, err := p2p.NewP2PService(
 		cfg.P2P.Address,
 		cfg.P2P.Port,
@@ -114,6 +125,27 @@ func New(configPath string) (*App, error) {
 		if wsHub := app.restServer.GetWSHub(); wsHub != nil {
 			wsHub.BroadcastNewBlock(block)
 		}
+	})
+
+	// ConsensusEngine에 P2P 브로드캐스터 설정
+	app.ConsensusEngine.SetP2PBroadcaster(app.P2PService)
+
+	// P2P에서 Proposal 수신 시 ConsensusEngine으로 전달
+	app.P2PService.SetProposalHandler(func(height uint64, round uint32, blockHash prt.Hash, block *core.Block) {
+		app.ConsensusEngine.HandleProposal(height, round, blockHash, block)
+	})
+
+	// P2P에서 Vote 수신 시 ConsensusEngine으로 전달
+	app.P2PService.SetVoteHandler(func(height uint64, round uint32, voteType uint8, blockHash prt.Hash, voterID prt.Address, signature prt.Signature) {
+		vote := &consensus.Vote{
+			Height:    height,
+			Round:     round,
+			Type:      consensus.VoteType(voteType),
+			BlockHash: blockHash,
+			VoterID:   voterID,
+			Signature: signature,
+		}
+		app.ConsensusEngine.HandleVote(vote)
 	})
 
 	// 누락된 블록 저장용 맵 (높이 -> 블록)
@@ -181,6 +213,14 @@ func New(configPath string) (*App, error) {
 		logger.Debug("[BlockHandler] Block ", block.Header.Height, " added successfully")
 
 		logger.Info("[BlockHandler] Block synced from peer: height=", block.Header.Height)
+		// PoA: 컨센서스 높이는 runRound()에서 블록체인 높이 기준으로 자동 동기화됨
+
+		// 다른 피어들에게 재브로드캐스트 (gossip)
+		if app.P2PService != nil {
+			if err := app.P2PService.BroadcastBlock(block); err != nil {
+				logger.Debug("[BlockHandler] Failed to rebroadcast block: ", err)
+			}
+		}
 
 		// 대기 중인 다음 블록 처리
 		for {
@@ -207,6 +247,8 @@ func New(configPath string) (*App, error) {
 			}
 
 			logger.Debug("[BlockHandler] Pending block added: height=", nextBlock.Header.Height)
+			// PoA: 컨센서스 높이는 runRound()에서 블록체인 높이 기준으로 자동 동기화됨
+
 			block = nextBlock
 		}
 	})

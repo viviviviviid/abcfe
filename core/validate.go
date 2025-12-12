@@ -40,7 +40,8 @@ func ValidateBlockHash(block *Block) error {
 	storedHash := block.Header.Hash
 	block.Header.Hash = prt.Hash{}
 
-	calculatedHash := utils.Hash(block)
+	// Header만으로 해시 계산 (SetBlock과 동일한 방식)
+	calculatedHash := utils.Hash(block.Header)
 	block.Header.Hash = storedHash
 
 	if storedHash != calculatedHash {
@@ -62,9 +63,9 @@ func ValidateHeightContinuity(blockHeight uint64, prevBlockHeight uint64) error 
 
 // ValidateTimestamp 타임스탬프 검증
 func ValidateTimestamp(blockTimestamp int64, prevBlockTimestamp int64) error {
-	// 이전 블록보다 이후여야 함
-	if blockTimestamp <= prevBlockTimestamp {
-		return fmt.Errorf("timestamp must be after prev block: prev=%d, current=%d",
+	// 이전 블록보다 이후이거나 같아야 함 (같은 초에 여러 블록 생성 가능)
+	if blockTimestamp < prevBlockTimestamp {
+		return fmt.Errorf("timestamp must be >= prev block: prev=%d, current=%d",
 			prevBlockTimestamp, blockTimestamp)
 	}
 

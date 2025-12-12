@@ -22,7 +22,7 @@ func NewProposerSelector(vs *ValidatorSet) *ProposerSelector {
 }
 
 // SelectProposer 라운드 로빈 방식으로 제안자 선택
-// height와 round를 기반으로 결정적으로 선택
+// PoA 모드: 높이만으로 제안자 결정 (라운드 무시하여 모든 노드가 동일한 제안자 선택)
 func (ps *ProposerSelector) SelectProposer(height uint64, round uint32) *Validator {
 	validators := ps.ValidatorSet.GetActiveValidators()
 	if len(validators) == 0 {
@@ -34,8 +34,8 @@ func (ps *ProposerSelector) SelectProposer(height uint64, round uint32) *Validat
 		return utils.AddressToString(validators[i].Address) < utils.AddressToString(validators[j].Address)
 	})
 
-	// 라운드 로빈
-	index := (height + uint64(round)) % uint64(len(validators))
+	// PoA 라운드 로빈: 높이만 사용 (모든 노드가 동일한 제안자 선택)
+	index := height % uint64(len(validators))
 	return validators[index]
 }
 

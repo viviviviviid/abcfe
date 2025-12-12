@@ -45,6 +45,18 @@ type Genesis struct {
 	SystemBalances  []uint64 `toml:"SystemBalances"`
 }
 
+// ValidatorConfig 제네시스 검증자 설정
+type ValidatorConfig struct {
+	Address     string `toml:"address"`
+	PublicKey   string `toml:"publicKey"`   // hex encoded
+	VotingPower uint64 `toml:"votingPower"`
+}
+
+// Validators 검증자 목록 설정 (PoA용)
+type Validators struct {
+	List []ValidatorConfig `toml:"list"`
+}
+
 type Server struct {
 	RestPort int `toml:"RestPort"`
 }
@@ -56,14 +68,15 @@ type P2P struct {
 }
 
 type Config struct {
-	Common  Common
-	LogInfo LogInfo
-	DB      DB
-	Wallet  Wallet
-	Version Version
-	Genesis Genesis
-	Server  Server
-	P2P     P2P
+	Common     Common
+	LogInfo    LogInfo
+	DB         DB
+	Wallet     Wallet
+	Version    Version
+	Genesis    Genesis
+	Validators Validators // 제네시스 검증자 목록 (PoA)
+	Server     Server
+	P2P        P2P
 }
 
 func NewConfig(filepath string) (*Config, error) {

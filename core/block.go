@@ -51,7 +51,8 @@ func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64) *Block {
 		Transactions: txs,
 	}
 
-	blkHash := utils.Hash(blk)
+	// 블록 해시는 Header만으로 계산 (Header에 MerkleRoot가 이미 포함되어 있어 트랜잭션 무결성 보장)
+	blkHash := utils.Hash(blk.Header)
 	blk.Header.Hash = blkHash
 
 	return blk

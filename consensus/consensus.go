@@ -1,9 +1,12 @@
 package consensus
 
 import (
+	"encoding/hex"
 	"fmt"
 	"sync"
 
+	"github.com/abcfe/abcfe-node/common/logger"
+	"github.com/abcfe/abcfe-node/common/utils"
 	conf "github.com/abcfe/abcfe-node/config"
 	prt "github.com/abcfe/abcfe-node/protocol"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -64,24 +67,69 @@ func NewConsensus(cfg *conf.Config, db *leveldb.DB) (*Consensus, error) {
 		return nil, fmt.Errorf("failed to load validator set: %w", err)
 	}
 
-	// 스테이커 기반으로 검증자 업데이트
-	validatorSet.UpdateFromStakerSet(stakerSet, MinStakeAmount)
+	// 제네시스 검증자 로드 (PoA)
+	if len(cfg.Validators.List) > 0 {
+		logger.Info("[Consensus] Loading genesis validators from config: ", len(cfg.Validators.List))
+		if err := loadGenesisValidators(validatorSet, cfg.Validators.List); err != nil {
+			return nil, fmt.Errorf("failed to load genesis validators: %w", err)
+		}
+		logger.Info("[Consensus] Genesis validators loaded, total voting power: ", validatorSet.TotalVotingPower)
+	} else {
+		// 제네시스 검증자가 없으면 스테이커 기반으로 검증자 업데이트
+		validatorSet.UpdateFromStakerSet(stakerSet, MinStakeAmount)
+	}
 
 	selector := NewProposerSelector(validatorSet)
 
 	consensus := &Consensus{
-		stop:         make(chan struct{}),
-		Conf:         *cfg,
-		DB:           db,
-		State:        StateIdle,
+		stop:          make(chan struct{}),
+		Conf:          *cfg,
+		DB:            db,
+		State:         StateIdle,
 		CurrentHeight: 0,
 		CurrentRound:  0,
-		StakerSet:    stakerSet,
-		ValidatorSet: validatorSet,
-		Selector:     selector,
+		StakerSet:     stakerSet,
+		ValidatorSet:  validatorSet,
+		Selector:      selector,
 	}
 
 	return consensus, nil
+}
+
+// loadGenesisValidators 설정 파일에서 제네시스 검증자 로드
+func loadGenesisValidators(vs *ValidatorSet, validators []conf.ValidatorConfig) error {
+	vs.Validators = make(map[string]*Validator)
+	vs.TotalVotingPower = 0
+
+	for _, v := range validators {
+		// 주소 파싱
+		addr, err := utils.StringToAddress(v.Address)
+		if err != nil {
+			return fmt.Errorf("invalid validator address %s: %w", v.Address, err)
+		}
+
+		// 공개키 파싱 (hex 인코딩)
+		var pubKey []byte
+		if v.PublicKey != "" {
+			pubKey, err = hex.DecodeString(v.PublicKey)
+			if err != nil {
+				return fmt.Errorf("invalid validator public key %s: %w", v.PublicKey, err)
+			}
+		}
+
+		addrStr := utils.AddressToString(addr)
+		vs.Validators[addrStr] = &Validator{
+			Address:     addr,
+			PublicKey:   pubKey,
+			VotingPower: v.VotingPower,
+			IsActive:    true,
+		}
+		vs.TotalVotingPower += v.VotingPower
+
+		logger.Info("[Consensus] Added genesis validator: ", addrStr, " power: ", v.VotingPower)
+	}
+
+	return nil
 }
 
 // RegisterValidator 로컬 노드를 검증자로 등록
@@ -89,10 +137,21 @@ func (c *Consensus) RegisterValidator(address prt.Address, publicKey []byte, pri
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	// 제네시스 검증자 목록에서 매칭되는 검증자 찾기
+	addrStr := utils.AddressToString(address)
+	var votingPower uint64 = 0
+
+	if existingValidator, exists := c.ValidatorSet.Validators[addrStr]; exists {
+		votingPower = existingValidator.VotingPower
+		logger.Info("[Consensus] Local validator found in genesis validators: ", addrStr, " power: ", votingPower)
+	} else {
+		logger.Warn("[Consensus] Local validator not found in genesis validators: ", addrStr)
+	}
+
 	validator := &Validator{
 		Address:     address,
 		PublicKey:   publicKey,
-		VotingPower: 0, // 스테이킹 후 업데이트됨
+		VotingPower: votingPower,
 		IsActive:    true,
 	}
 
@@ -103,11 +162,11 @@ func (c *Consensus) RegisterValidator(address prt.Address, publicKey []byte, pri
 }
 
 // Stake 스테이킹
-func (c *Consensus) Stake(address prt.Address, amount uint64) error {
+func (c *Consensus) Stake(address prt.Address, amount uint64, publicKey []byte) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if err := c.StakerSet.AddStaker(address, amount); err != nil {
+	if err := c.StakerSet.AddStaker(address, amount, publicKey); err != nil {
 		return err
 	}
 

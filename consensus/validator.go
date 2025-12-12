@@ -119,7 +119,7 @@ func (vs *ValidatorSet) UpdateFromStakerSet(stakerSet *StakerSet, minStake uint6
 		if staker.IsActive && staker.Amount >= minStake {
 			vs.Validators[addrStr] = &Validator{
 				Address:     staker.Address,
-				PublicKey:   nil, // TODO: 스테이킹 시 공개키 등록 필요
+				PublicKey:   staker.PublicKey, // 스테이커의 공개키 복사
 				VotingPower: staker.Amount,
 				IsActive:    true,
 			}

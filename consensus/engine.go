@@ -11,12 +11,21 @@ import (
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
 
+// P2PBroadcaster P2P 브로드캐스트 인터페이스
+type P2PBroadcaster interface {
+	BroadcastProposal(height uint64, round uint32, blockHash prt.Hash, block *core.Block, proposerID string, signature prt.Signature) error
+	BroadcastVote(height uint64, round uint32, blockHash prt.Hash, voteType uint8, voterID string, signature prt.Signature) error
+}
+
 // ConsensusEngine 컨센서스 엔진 (실행 로직)
 type ConsensusEngine struct {
 	mu sync.RWMutex
 
 	consensus  *Consensus
 	blockchain *core.BlockChain
+
+	// P2P 브로드캐스터
+	p2p P2PBroadcaster
 
 	// 투표 관리
 	prevotes   *VoteSet
@@ -47,6 +56,13 @@ func (e *ConsensusEngine) SetBlockCommitCallback(callback func(*core.Block)) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.onBlockCommit = callback
+}
+
+// SetP2PBroadcaster P2P 브로드캐스터 설정
+func (e *ConsensusEngine) SetP2PBroadcaster(p2p P2PBroadcaster) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.p2p = p2p
 }
 
 // Start 컨센서스 엔진 시작
@@ -113,24 +129,51 @@ func (e *ConsensusEngine) runRound() {
 		return
 	}
 
-	// 현재 제안자 확인
-	proposer := e.consensus.GetCurrentProposer()
+	// PoA: 블록체인 높이 기준으로 다음 블록의 제안자 결정
+	// (컨센서스 높이가 아닌 실제 블록체인 높이 사용)
+	currentHeight, err := e.blockchain.GetLatestHeight()
+	if err != nil {
+		currentHeight = 0
+	}
+	nextBlockHeight := currentHeight + 1
+
+	// 컨센서스 높이 동기화 (블록체인 높이 기준)
+	if e.consensus.CurrentHeight != nextBlockHeight {
+		e.consensus.mu.Lock()
+		e.consensus.CurrentHeight = nextBlockHeight
+		e.consensus.CurrentRound = 0
+		e.consensus.mu.Unlock()
+	}
+
+	// 다음 블록의 제안자 확인 (블록체인 높이 + 1)
+	proposer := e.consensus.Selector.SelectProposer(nextBlockHeight, 0)
 	if proposer == nil {
 		logger.Warn("[Consensus] No proposer selected")
-		e.consensus.IncrementRound()
 		return
 	}
 
-	// 내가 제안자인지 확인
-	if e.consensus.IsLocalProposer() {
-		e.proposeBlock()
+	// 디버그 로그: 현재 제안자 정보
+	proposerAddr := utils.AddressToString(proposer.Address)
+	localAddr := ""
+	isLocalProposer := false
+	if e.consensus.LocalValidator != nil {
+		localAddr = utils.AddressToString(e.consensus.LocalValidator.Address)
+		isLocalProposer = (proposer.Address == e.consensus.LocalValidator.Address)
 	}
+	logger.Info("[Consensus] BlockHeight ", currentHeight, " NextBlock ", nextBlockHeight, " Proposer: ", proposerAddr, " Local: ", localAddr, " IsLocal: ", isLocalProposer)
 
-	// 투표 처리는 P2P를 통해 수신된 메시지로 처리
-	// 간단한 구현을 위해 단일 노드에서는 바로 커밋
-	if e.proposedBlock != nil && len(validators) == 1 {
-		e.commitBlock(e.proposedBlock)
+	// 내가 제안자인지 확인
+	if isLocalProposer {
+		e.proposeBlock()
+
+		// PoA 모드: 제안자가 블록을 생성하면 바로 커밋
+		// (투표 기반 합의 대신 권한 기반 즉시 커밋)
+		if e.proposedBlock != nil {
+			e.commitBlock(e.proposedBlock)
+		}
 	}
+	// PoA 모드에서는 자기 차례가 아니면 대기 (라운드 증가 없음)
+	// 다른 노드가 생성한 블록을 P2P로 받으면 높이가 업데이트됨
 }
 
 // produceBlockSolo 단독 노드 모드에서 블록 생성
@@ -172,7 +215,7 @@ func (e *ConsensusEngine) produceBlockSolo() {
 	e.consensus.UpdateHeight(newBlock.Header.Height + 1)
 }
 
-// proposeBlock 블록 제안
+// proposeBlock 블록 제안 (PoA 모드: 투표 없이 즉시 커밋)
 func (e *ConsensusEngine) proposeBlock() {
 	e.consensus.mu.Lock()
 	e.consensus.State = StateProposing
@@ -200,15 +243,10 @@ func (e *ConsensusEngine) proposeBlock() {
 
 	e.proposedBlock = newBlock
 
-	// 투표셋 초기화
-	e.prevotes = NewVoteSet(newBlock.Header.Height, e.consensus.CurrentRound, VoteTypePrevote)
-	e.precommits = NewVoteSet(newBlock.Header.Height, e.consensus.CurrentRound, VoteTypePrecommit)
-
 	logger.Info("[Consensus] Proposed block ", newBlock.Header.Height, " (hash: ", utils.HashToString(newBlock.Header.Hash)[:16], ")")
 
-	e.consensus.mu.Lock()
-	e.consensus.State = StateVoting
-	e.consensus.mu.Unlock()
+	// PoA 모드: Proposal 브로드캐스트와 투표 과정 생략
+	// 블록은 commitBlock() 후 NewBlock 메시지로 브로드캐스트됨
 }
 
 // HandleProposal 제안 메시지 처리 (P2P로부터)
@@ -283,13 +321,11 @@ func (e *ConsensusEngine) castVote(voteType VoteType, blockHash prt.Hash) {
 	}
 
 	// 서명 생성
-	hashBytes := utils.HashToBytes(blockHash)
 	sig, err := e.consensus.LocalProposer.signBlockHash(blockHash)
 	if err != nil {
 		logger.Error("[Consensus] Failed to sign vote: ", err)
 		return
 	}
-	_ = hashBytes // 사용하지 않음
 
 	vote := &Vote{
 		Height:    e.consensus.CurrentHeight,
@@ -299,6 +335,21 @@ func (e *ConsensusEngine) castVote(voteType VoteType, blockHash prt.Hash) {
 		VoterID:   e.consensus.LocalValidator.Address,
 		Signature: sig,
 		Timestamp: time.Now().Unix(),
+	}
+
+	// P2P로 투표 브로드캐스트
+	if e.p2p != nil {
+		voterID := utils.AddressToString(e.consensus.LocalValidator.Address)
+		if err := e.p2p.BroadcastVote(
+			vote.Height,
+			vote.Round,
+			vote.BlockHash,
+			uint8(voteType),
+			voterID,
+			vote.Signature,
+		); err != nil {
+			logger.Error("[Consensus] Failed to broadcast vote: ", err)
+		}
 	}
 
 	// 로컬 투표 처리

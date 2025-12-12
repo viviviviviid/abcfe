@@ -12,6 +12,7 @@ import (
 // Staker 스테이커 정보
 type Staker struct {
 	Address   prt.Address `json:"address"`
+	PublicKey []byte      `json:"publicKey"` // 검증자 신원 확인용 공개키
 	Amount    uint64      `json:"amount"`
 	StartTime int64       `json:"startTime"` // 스테이킹 시작 시간 (unix)
 	EndTime   int64       `json:"endTime"`   // 언스테이킹 예정 시간 (0이면 무기한)
@@ -33,12 +34,16 @@ func NewStakerSet() *StakerSet {
 }
 
 // AddStaker 스테이커 추가
-func (s *StakerSet) AddStaker(address prt.Address, amount uint64) error {
+func (s *StakerSet) AddStaker(address prt.Address, amount uint64, publicKey []byte) error {
 	addrStr := utils.AddressToString(address)
 
 	if existing, exists := s.Stakers[addrStr]; exists {
 		// 기존 스테이커면 금액 추가
 		existing.Amount += amount
+		// 공개키가 없으면 업데이트
+		if len(existing.PublicKey) == 0 && len(publicKey) > 0 {
+			existing.PublicKey = publicKey
+		}
 		s.TotalStaked += amount
 		return nil
 	}
@@ -46,6 +51,7 @@ func (s *StakerSet) AddStaker(address prt.Address, amount uint64) error {
 	// 새 스테이커
 	s.Stakers[addrStr] = &Staker{
 		Address:   address,
+		PublicKey: publicKey,
 		Amount:    amount,
 		StartTime: time.Now().Unix(),
 		EndTime:   0,

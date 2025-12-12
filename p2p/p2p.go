@@ -18,8 +18,10 @@ type P2PService struct {
 	Blockchain *core.BlockChain
 
 	// 메시지 핸들러
-	blockHandler func(*core.Block)
-	txHandler    func(*core.Transaction)
+	blockHandler    func(*core.Block)
+	txHandler       func(*core.Transaction)
+	proposalHandler func(height uint64, round uint32, blockHash prt.Hash, block *core.Block)
+	voteHandler     func(height uint64, round uint32, voteType uint8, blockHash prt.Hash, voterID prt.Address, signature prt.Signature)
 
 	running bool
 }
@@ -94,6 +96,20 @@ func (s *P2PService) SetTxHandler(handler func(*core.Transaction)) {
 	s.txHandler = handler
 }
 
+// SetProposalHandler 블록 제안 수신 핸들러 설정
+func (s *P2PService) SetProposalHandler(handler func(height uint64, round uint32, blockHash prt.Hash, block *core.Block)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.proposalHandler = handler
+}
+
+// SetVoteHandler 투표 수신 핸들러 설정
+func (s *P2PService) SetVoteHandler(handler func(height uint64, round uint32, voteType uint8, blockHash prt.Hash, voterID prt.Address, signature prt.Signature)) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.voteHandler = handler
+}
+
 // handleMessage 수신 메시지 처리
 func (s *P2PService) handleMessage(msg *Message, peer *Peer) {
 	switch msg.Type {
@@ -109,6 +125,10 @@ func (s *P2PService) handleMessage(msg *Message, peer *Peer) {
 		s.handleGetBlocks(msg, peer)
 	case MsgTypeBlocks:
 		s.handleBlocks(msg, peer)
+	case MsgTypeProposal:
+		s.handleProposal(msg, peer)
+	case MsgTypeVote:
+		s.handleVote(msg, peer)
 	}
 }
 
@@ -248,6 +268,68 @@ func (s *P2PService) handleBlocks(msg *Message, peer *Peer) {
 		}
 	} else {
 		logger.Error("[P2P] Block handler not set!")
+	}
+}
+
+// handleProposal 블록 제안 수신 처리
+func (s *P2PService) handleProposal(msg *Message, peer *Peer) {
+	logger.Debug("[P2P] Received proposal message from peer: ", peer.Address)
+
+	var payload ProposalPayload
+	if err := UnmarshalPayload(msg.Payload, &payload); err != nil {
+		logger.Error("[P2P] Failed to unmarshal proposal payload: ", err)
+		return
+	}
+
+	// 블록 역직렬화
+	var block core.Block
+	if err := utils.DeserializeData(payload.BlockData, &block, utils.SerializationFormatGob); err != nil {
+		logger.Error("[P2P] Failed to deserialize proposed block: ", err)
+		return
+	}
+
+	logger.Debug("[P2P] Received proposal - height: ", payload.Height, ", round: ", payload.Round)
+
+	// 제안 핸들러 호출
+	s.mu.RLock()
+	handler := s.proposalHandler
+	s.mu.RUnlock()
+
+	if handler != nil {
+		handler(payload.Height, payload.Round, payload.BlockHash, &block)
+	} else {
+		logger.Warn("[P2P] Proposal handler not set!")
+	}
+}
+
+// handleVote 투표 수신 처리
+func (s *P2PService) handleVote(msg *Message, peer *Peer) {
+	logger.Debug("[P2P] Received vote message from peer: ", peer.Address)
+
+	var payload VotePayload
+	if err := UnmarshalPayload(msg.Payload, &payload); err != nil {
+		logger.Error("[P2P] Failed to unmarshal vote payload: ", err)
+		return
+	}
+
+	logger.Debug("[P2P] Received vote - height: ", payload.Height, ", round: ", payload.Round, ", type: ", payload.VoteType)
+
+	// VoterID를 Address로 변환
+	voterAddr, err := utils.StringToAddress(payload.VoterID)
+	if err != nil {
+		logger.Error("[P2P] Failed to parse voter address: ", err)
+		return
+	}
+
+	// 투표 핸들러 호출
+	s.mu.RLock()
+	handler := s.voteHandler
+	s.mu.RUnlock()
+
+	if handler != nil {
+		handler(payload.Height, payload.Round, payload.VoteType, payload.BlockHash, voterAddr, payload.Signature)
+	} else {
+		logger.Warn("[P2P] Vote handler not set!")
 	}
 }
 
@@ -401,12 +483,20 @@ type BlocksPayload struct {
 }
 
 // BroadcastProposal 블록 제안 브로드캐스트 (컨센서스용)
-func (s *P2PService) BroadcastProposal(height uint64, round uint32, blockHash prt.Hash, proposerID string) error {
+func (s *P2PService) BroadcastProposal(height uint64, round uint32, blockHash prt.Hash, block *core.Block, proposerID string, signature prt.Signature) error {
+	// 블록 직렬화
+	blockData, err := utils.SerializeData(block, utils.SerializationFormatGob)
+	if err != nil {
+		return fmt.Errorf("failed to serialize block: %w", err)
+	}
+
 	payload := ProposalPayload{
 		Height:     height,
 		Round:      round,
 		BlockHash:  blockHash,
+		BlockData:  blockData,
 		ProposerID: proposerID,
+		Signature:  signature,
 	}
 	payloadBytes, err := MarshalPayload(payload)
 	if err != nil {
@@ -415,6 +505,7 @@ func (s *P2PService) BroadcastProposal(height uint64, round uint32, blockHash pr
 
 	msg := NewMessage(MsgTypeProposal, payloadBytes, s.Node.ID)
 	s.Node.Broadcast(msg)
+	logger.Debug("[P2P] Broadcast proposal - height: ", height, ", round: ", round)
 	return nil
 }
 

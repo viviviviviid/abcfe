@@ -1,0 +1,49 @@
+### 노드 상태 조회
+GET http://localhost:8000/api/v1/status
+
+### 블록 목록 조회
+GET http://localhost:8000/api/v1/blocks
+
+### 블록 높이로 조회
+GET http://localhost:8000/api/v1/block/height/0
+
+### 블록 해시로 조회
+GET http://localhost:8000/api/v1/block/hash/1b924bef65123372e27e00c780d119b1b8b19d85c133b61446d61ee67a682690
+
+### 블록 목록 (페이지네이션)
+GET http://localhost:8000/api/v1/blocks?page=1&limit=10
+
+### 트랜잭션 조회
+GET http://localhost:8000/api/v1/tx/00e1480d3654d58167f04f04d7a3fc969b154a3362087525c614db7304ae3bbe
+
+### 주소 잔액 조회
+GET http://localhost:8000/api/v1/address/17112bdf0c4b66abcb6b9651538a36da97031cca/balance
+
+### 주소 UTXO 조회
+GET http://localhost:8000/api/v1/address/17112bdf0c4b66abcb6b9651538a36da97031cca/utxo
+
+### 멤풀 조회
+GET http://localhost:8000/api/v1/mempool/list
+
+### 컨센서스 상태 조회
+GET http://localhost:8000/api/v1/consensus/status
+
+### 컨센서스 검증자 목록 조회
+GET http://localhost:8000/api/v1/consensus/validators
+
+### 컨센서스 검증자 추가
+POST http://localhost:8000/api/v1/consensus/validator
+
+### 컨센서스 검증자 삭제
+DELETE http://localhost:8000/api/v1/consensus/validator/17112bdf0c4b66abcb6b9651538a36da97031cca
+
+### 네트워크 통계 조회
+GET http://localhost:8000/api/v1/stats
+
+### 지갑 계정 목록 조회
+GET http://localhost:8000/api/v1/wallet/accounts
+
+### 새 계정 생성
+POST http://localhost:8000/api/v1/wallet/account/new
+
+

@@ -252,8 +252,10 @@ func ComposeAndAddBlock(bc *core.BlockChain) http.HandlerFunc {
 			return
 		}
 
-		// 블록 구성
-		blk := bc.SetBlock(prevHash, curHeight)
+		// 블록 구성 (API에서 직접 블록을 생성하는 경우는 테스트용으로, 빈 제안자 사용)
+		// 실제 운영에서는 컨센서스 엔진을 통해 블록이 생성되어야 함
+		var emptyProposer [20]byte
+		blk := bc.SetBlock(prevHash, curHeight, emptyProposer)
 
 		// 블록 추가
 		result, err := bc.AddBlock(*blk)
@@ -311,6 +313,8 @@ func formatBlockResp(block *core.Block) (BlockResp, error) {
 			Timestamp:  block.Header.Timestamp,
 		},
 		Transactions: txDetails,
+		Proposer:     utils.AddressToString(block.Proposer),
+		Signature:    utils.SignatureToString(block.Signature),
 	}
 
 	return response, nil

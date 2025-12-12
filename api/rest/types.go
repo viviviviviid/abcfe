@@ -17,6 +17,8 @@ type BlockchainStatResp struct {
 type BlockResp struct {
 	Header       BlockHeaderResp `json:"header"`
 	Transactions []TxResp        `json:"transactions"` // 트랜잭션 ID 목록
+	Proposer     string          `json:"proposer"`     // 블록 제안자 주소
+	Signature    string          `json:"signature"`    // 제안자 서명
 }
 
 type BlockHeaderResp struct {

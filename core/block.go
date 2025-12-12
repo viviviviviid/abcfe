@@ -13,11 +13,9 @@ type Block struct {
 	Header       BlockHeader    `json:"header"`       // 블록 헤더
 	Transactions []*Transaction `json:"transactions"` // 트랜잭션 목록
 
-	// TODO: Consensus 시작시
-	// Proposer      Address     `json:"proposer"`      // 블록 제안자
-	// Validators    []Address   `json:"validators"`    // 검증자 목록 // 자세한 정보는 상위에 있는 컨센서스 패키지에서 처리할 예정
-	// Signatures    []Signature `json:"signatures"`    // 검증자 서명
-	// ConsensusData []byte      `json:"consensusData"` // 컨센서스 관련 데이터는 단방향 참조를 위해 직렬화만
+	// PoA 컨센서스 정보
+	Proposer  prt.Address   `json:"proposer"`  // 블록 제안자 주소
+	Signature prt.Signature `json:"signature"` // 제안자의 블록 서명
 }
 
 type BlockHeader struct {
@@ -30,7 +28,7 @@ type BlockHeader struct {
 	// StateRoot  Hash   `json:"stateRoot"`  // 상태 머클 루트 (UTXO 또는 계정 상태)
 }
 
-func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64) *Block {
+func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Address) *Block {
 	// 메모리 풀에서 트랜잭션 가져오기
 	txs := p.Mempool.GetTxs()
 
@@ -49,6 +47,7 @@ func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64) *Block {
 	blk := &Block{
 		Header:       *blkHeader,
 		Transactions: txs,
+		Proposer:     proposer,
 	}
 
 	// 블록 해시는 Header만으로 계산 (Header에 MerkleRoot가 이미 포함되어 있어 트랜잭션 무결성 보장)
@@ -56,6 +55,11 @@ func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64) *Block {
 	blk.Header.Hash = blkHash
 
 	return blk
+}
+
+// SignBlock 블록에 서명 추가
+func (blk *Block) SignBlock(signature prt.Signature) {
+	blk.Signature = signature
 }
 
 // TOOD: 모듈화 여부는 이후에 내용이 많아질 경우

@@ -115,6 +115,37 @@ func ValidateDuplicateUTXO(txs []*Transaction) error {
 	return nil
 }
 
+// ValidateProposer 제안자 주소 검증 (빈 주소가 아닌지 확인)
+func ValidateProposer(block *Block) error {
+	var emptyAddr prt.Address
+	if block.Proposer == emptyAddr {
+		return fmt.Errorf("block proposer is empty")
+	}
+	return nil
+}
+
+// ValidateProposerSignature 제안자 서명 검증 (블록 해시에 대한 서명)
+func ValidateProposerSignature(block *Block, validator ProposerValidator) error {
+	if validator == nil {
+		// 검증자가 설정되지 않은 경우 (단독 노드 등) 건너뜀
+		return nil
+	}
+
+	// 제안자가 유효한 검증자인지 확인
+	if !validator.IsValidProposer(block.Proposer, block.Header.Height) {
+		return fmt.Errorf("proposer %s is not a valid validator for height %d",
+			utils.AddressToString(block.Proposer), block.Header.Height)
+	}
+
+	// 서명 검증
+	if !validator.ValidateProposerSignature(block.Proposer, block.Header.Hash, block.Signature) {
+		return fmt.Errorf("invalid proposer signature for block %s",
+			utils.HashToString(block.Header.Hash))
+	}
+
+	return nil
+}
+
 // ValidateBlock 블록 전체 검증 (BlockChain 메서드)
 func (p *BlockChain) ValidateBlock(block Block) error {
 	p.mu.RLock()
@@ -156,22 +187,32 @@ func (p *BlockChain) ValidateBlock(block Block) error {
 		return err
 	}
 
-	// 6. 트랜잭션 개수 검증
+	// 6. 제안자 주소 검증
+	if err := ValidateProposer(&block); err != nil {
+		return err
+	}
+
+	// 7. 제안자 서명 검증 (PoA)
+	if err := ValidateProposerSignature(&block, p.proposerValidator); err != nil {
+		return err
+	}
+
+	// 8. 트랜잭션 개수 검증
 	if err := ValidateTxCount(block.Transactions); err != nil {
 		return err
 	}
 
-	// 7. 중복 트랜잭션 검증
+	// 9. 중복 트랜잭션 검증
 	if err := ValidateDuplicateTx(block.Transactions); err != nil {
 		return err
 	}
 
-	// 8. 중복 UTXO 사용 검증
+	// 10. 중복 UTXO 사용 검증
 	if err := ValidateDuplicateUTXO(block.Transactions); err != nil {
 		return err
 	}
 
-	// 9. 각 트랜잭션 검증
+	// 11. 각 트랜잭션 검증
 	for _, tx := range block.Transactions {
 		if err := p.ValidateTransaction(tx); err != nil {
 			return fmt.Errorf("invalid transaction %s: %w", utils.HashToString(tx.ID), err)

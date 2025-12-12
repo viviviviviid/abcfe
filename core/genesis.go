@@ -12,6 +12,8 @@ const GenesisTimestamp int64 = 1704067200
 
 func (p *BlockChain) SetGenesisBlock() (*Block, error) {
 	var defaultPrevHash prt.Hash
+	var emptyProposer prt.Address
+	var emptySignature prt.Signature
 
 	// 제네시스블록에는 이전 블록 해시값이 없으므로, 0으로 구성
 	for i := range defaultPrevHash {
@@ -37,9 +39,12 @@ func (p *BlockChain) SetGenesisBlock() (*Block, error) {
 	block := &Block{
 		Header:       *blkHeader,
 		Transactions: txs,
+		Proposer:     emptyProposer,  // 제네시스 블록은 제안자 없음
+		Signature:    emptySignature, // 제네시스 블록은 서명 없음
 	}
 
-	blkHash := utils.Hash(block)
+	// 블록 해시는 Header만으로 계산 (일반 블록과 동일한 방식)
+	blkHash := utils.Hash(block.Header)
 	block.Header.Hash = blkHash
 
 	return block, nil

@@ -269,3 +269,40 @@ func (c *Consensus) GetTotalStaked() uint64 {
 func (c *Consensus) Stop() {
 	close(c.stop)
 }
+
+// ValidateProposerSignature 제안자 서명 검증 (core.ProposerValidator 인터페이스 구현)
+func (c *Consensus) ValidateProposerSignature(proposer prt.Address, blockHash prt.Hash, signature prt.Signature) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// 검증자 찾기
+	addrStr := utils.AddressToString(proposer)
+	validator, exists := c.ValidatorSet.Validators[addrStr]
+	if !exists || !validator.IsActive {
+		return false
+	}
+
+	// 서명 검증
+	return validator.ValidateBlockSignature(blockHash, signature)
+}
+
+// IsValidProposer 해당 높이의 유효한 제안자인지 확인 (core.ProposerValidator 인터페이스 구현)
+func (c *Consensus) IsValidProposer(proposer prt.Address, height uint64) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// 검증자 목록에 있는지 확인
+	addrStr := utils.AddressToString(proposer)
+	validator, exists := c.ValidatorSet.Validators[addrStr]
+	if !exists || !validator.IsActive {
+		return false
+	}
+
+	// PoA에서는 라운드 로빈으로 제안자가 결정되므로, 해당 높이의 예상 제안자와 비교
+	expectedProposer := c.Selector.SelectProposer(height, 0)
+	if expectedProposer == nil {
+		return false
+	}
+
+	return expectedProposer.Address == proposer
+}

@@ -214,9 +214,11 @@ func createValidBlock(prevHash prt.Hash, height uint64, txs []*Transaction) *Blo
 	block := &Block{
 		Header:       *blkHeader,
 		Transactions: txs,
+		// Proposer와 Signature는 빈 값 (테스트용)
 	}
 
-	block.Header.Hash = utils.Hash(block)
+	// 블록 해시는 Header만으로 계산 (SetBlock과 동일한 방식)
+	block.Header.Hash = utils.Hash(block.Header)
 	return block
 }
 

@@ -87,6 +87,9 @@ func New(configPath string) (*App, error) {
 	// Consensus Engine 초기화
 	consEngine := consensus.NewConsensusEngine(cons, bc)
 
+	// BlockChain에 ProposerValidator 설정 (PoA 검증용)
+	bc.SetProposerValidator(cons)
+
 	// P2P 초기화 (먼저 생성해야 ConsensusEngine에 연결 가능)
 	p2pService, err := p2p.NewP2PService(
 		cfg.P2P.Address,

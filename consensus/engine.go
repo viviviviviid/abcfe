@@ -191,11 +191,27 @@ func (e *ConsensusEngine) produceBlockSolo() {
 		prevHash = prevBlock.Header.Hash
 	}
 
+	// 제안자 주소 (로컬 검증자 또는 빈 주소)
+	var proposerAddr prt.Address
+	if e.consensus.LocalValidator != nil {
+		proposerAddr = e.consensus.LocalValidator.Address
+	}
+
 	// 새 블록 생성
-	newBlock := e.blockchain.SetBlock(prevHash, currentHeight+1)
+	newBlock := e.blockchain.SetBlock(prevHash, currentHeight+1, proposerAddr)
 	if newBlock == nil {
 		logger.Error("[Consensus] Failed to create block")
 		return
+	}
+
+	// 블록 서명 (로컬 제안자가 있는 경우)
+	if e.consensus.LocalProposer != nil {
+		sig, err := e.consensus.LocalProposer.signBlockHash(newBlock.Header.Hash)
+		if err != nil {
+			logger.Error("[Consensus] Failed to sign block: ", err)
+		} else {
+			newBlock.SignBlock(sig)
+		}
 	}
 
 	// 블록 추가
@@ -234,16 +250,32 @@ func (e *ConsensusEngine) proposeBlock() {
 		prevHash = prevBlock.Header.Hash
 	}
 
+	// 제안자 주소
+	var proposerAddr prt.Address
+	if e.consensus.LocalValidator != nil {
+		proposerAddr = e.consensus.LocalValidator.Address
+	}
+
 	// 새 블록 생성
-	newBlock := e.blockchain.SetBlock(prevHash, currentHeight+1)
+	newBlock := e.blockchain.SetBlock(prevHash, currentHeight+1, proposerAddr)
 	if newBlock == nil {
 		logger.Error("[Consensus] Failed to create proposed block")
 		return
 	}
 
+	// 블록 서명
+	if e.consensus.LocalProposer != nil {
+		sig, err := e.consensus.LocalProposer.signBlockHash(newBlock.Header.Hash)
+		if err != nil {
+			logger.Error("[Consensus] Failed to sign proposed block: ", err)
+		} else {
+			newBlock.SignBlock(sig)
+		}
+	}
+
 	e.proposedBlock = newBlock
 
-	logger.Info("[Consensus] Proposed block ", newBlock.Header.Height, " (hash: ", utils.HashToString(newBlock.Header.Hash)[:16], ")")
+	logger.Info("[Consensus] Proposed block ", newBlock.Header.Height, " (hash: ", utils.HashToString(newBlock.Header.Hash)[:16], ", proposer: ", utils.AddressToString(proposerAddr)[:16], ")")
 
 	// PoA 모드: Proposal 브로드캐스트와 투표 과정 생략
 	// 블록은 commitBlock() 후 NewBlock 메시지로 브로드캐스트됨

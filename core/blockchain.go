@@ -10,6 +10,12 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
+// ProposerValidator 제안자 서명 검증을 위한 인터페이스
+type ProposerValidator interface {
+	ValidateProposerSignature(proposer proto.Address, blockHash proto.Hash, signature proto.Signature) bool
+	IsValidProposer(proposer proto.Address, height uint64) bool
+}
+
 type BlockChain struct {
 	LatestHeight    uint64
 	LatestBlockHash string
@@ -17,6 +23,9 @@ type BlockChain struct {
 	cfg             *config.Config
 	Mempool         *Mempool
 	mu              sync.RWMutex // 쓰기가 없는 경우, 읽기 고루틴이 여러개 접근 가능
+
+	// PoA 검증을 위한 콜백 (consensus 패키지에서 설정)
+	proposerValidator ProposerValidator
 }
 
 func NewChainState(db *leveldb.DB, cfg *config.Config) (*BlockChain, error) {
@@ -158,4 +167,14 @@ func (p *BlockChain) UpdateChainState(height uint64, blockHash string) error {
 
 	// batch write excute
 	return p.db.Write(batch, nil)
+}
+
+// SetProposerValidator PoA 검증을 위한 인터페이스 설정
+func (p *BlockChain) SetProposerValidator(validator ProposerValidator) {
+	p.proposerValidator = validator
+}
+
+// GetProposerValidator PoA 검증 인터페이스 반환
+func (p *BlockChain) GetProposerValidator() ProposerValidator {
+	return p.proposerValidator
 }

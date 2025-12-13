@@ -15,10 +15,18 @@ type BlockchainStatResp struct {
 
 // 블록 응답
 type BlockResp struct {
-	Header       BlockHeaderResp `json:"header"`
-	Transactions []TxResp        `json:"transactions"` // 트랜잭션 ID 목록
-	Proposer     string          `json:"proposer"`     // 블록 제안자 주소
-	Signature    string          `json:"signature"`    // 제안자 서명
+	Header           BlockHeaderResp       `json:"header"`
+	Transactions     []TxResp              `json:"transactions"`               // 트랜잭션 ID 목록
+	Proposer         string                `json:"proposer"`                   // 블록 제안자 주소
+	Signature        string                `json:"signature"`                  // 제안자 서명
+	CommitSignatures []CommitSignatureResp `json:"commitSignatures,omitempty"` // BFT 검증자 서명들
+}
+
+// BFT 커밋 서명 응답
+type CommitSignatureResp struct {
+	ValidatorAddress string `json:"validatorAddress"` // 검증자 주소
+	Signature        string `json:"signature"`        // 검증자 서명
+	Timestamp        int64  `json:"timestamp"`        // 서명 시간
 }
 
 type BlockHeaderResp struct {

@@ -17,6 +17,16 @@ type Block struct {
 	// PoA 컨센서스 정보
 	Proposer  prt.Address   `json:"proposer"`  // 블록 제안자 주소
 	Signature prt.Signature `json:"signature"` // 제안자의 블록 서명
+
+	// BFT 컨센서스 정보 (2/3 투표 증거)
+	CommitSignatures []CommitSignature `json:"commitSignatures,omitempty"` // 검증자들의 커밋 서명
+}
+
+// CommitSignature 검증자의 커밋 서명 정보
+type CommitSignature struct {
+	ValidatorAddress prt.Address   `json:"validatorAddress"` // 검증자 주소
+	Signature        prt.Signature `json:"signature"`        // 블록 해시에 대한 서명
+	Timestamp        int64         `json:"timestamp"`        // 서명 시간
 }
 
 type BlockHeader struct {

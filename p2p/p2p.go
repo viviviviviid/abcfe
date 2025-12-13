@@ -288,7 +288,10 @@ func (s *P2PService) handleProposal(msg *Message, peer *Peer) {
 		return
 	}
 
-	logger.Debug("[P2P] Received proposal - height: ", payload.Height, ", round: ", payload.Round)
+	logger.Info("[P2P] Received proposal - height: ", payload.Height, ", round: ", payload.Round, ", from: ", peer.Address)
+
+	// 다른 피어들에게 릴레이 (발신자 제외)
+	s.relayMessage(msg, peer)
 
 	// 제안 핸들러 호출
 	s.mu.RLock()
@@ -312,7 +315,14 @@ func (s *P2PService) handleVote(msg *Message, peer *Peer) {
 		return
 	}
 
-	logger.Debug("[P2P] Received vote - height: ", payload.Height, ", round: ", payload.Round, ", type: ", payload.VoteType)
+	voteTypeStr := "Prevote"
+	if payload.VoteType == 1 {
+		voteTypeStr = "Precommit"
+	}
+	logger.Debug("[P2P] Received ", voteTypeStr, " - height: ", payload.Height, ", round: ", payload.Round, ", voter: ", payload.VoterID[:16])
+
+	// 다른 피어들에게 릴레이 (발신자 제외)
+	s.relayMessage(msg, peer)
 
 	// VoterID를 Address로 변환
 	voterAddr, err := utils.StringToAddress(payload.VoterID)
@@ -330,6 +340,33 @@ func (s *P2PService) handleVote(msg *Message, peer *Peer) {
 		handler(payload.Height, payload.Round, payload.VoteType, payload.BlockHash, voterAddr, payload.Signature)
 	} else {
 		logger.Warn("[P2P] Vote handler not set!")
+	}
+}
+
+// relayMessage 메시지를 다른 피어들에게 릴레이 (발신자 제외)
+func (s *P2PService) relayMessage(msg *Message, sender *Peer) {
+	s.Node.mu.RLock()
+	peers := make([]*Peer, 0, len(s.Node.Peers))
+	for _, peer := range s.Node.Peers {
+		// 발신자와 원본 발신자는 제외
+		if peer.State == PeerStateActive && peer.ID != sender.ID && peer.ID != msg.From {
+			peers = append(peers, peer)
+		}
+	}
+	s.Node.mu.RUnlock()
+
+	if len(peers) == 0 {
+		return
+	}
+
+	logger.Debug("[P2P] Relaying message type ", msg.Type, " to ", len(peers), " peers")
+
+	for _, peer := range peers {
+		go func(p *Peer) {
+			if err := s.Node.sendMessage(p, msg); err != nil {
+				logger.Debug("[P2P] Failed to relay to ", p.Address, ": ", err)
+			}
+		}(peer)
 	}
 }
 

@@ -6,11 +6,12 @@ import (
 	"github.com/abcfe/abcfe-node/api"
 	"github.com/abcfe/abcfe-node/consensus"
 	"github.com/abcfe/abcfe-node/core"
+	"github.com/abcfe/abcfe-node/p2p"
 	"github.com/abcfe/abcfe-node/wallet"
 	"github.com/gorilla/mux"
 )
 
-func setupRouter(blockchain *core.BlockChain, walletMgr *wallet.WalletManager, wsHub *api.WSHub, cons *consensus.Consensus) http.Handler {
+func setupRouter(blockchain *core.BlockChain, walletMgr *wallet.WalletManager, wsHub *api.WSHub, cons *consensus.Consensus, p2pService *p2p.P2PService) http.Handler {
 	r := mux.NewRouter()
 
 	// 미들웨어 설정
@@ -61,6 +62,10 @@ func setupRouter(blockchain *core.BlockChain, walletMgr *wallet.WalletManager, w
 
 	// WebSocket 상태 API
 	apiRouter.HandleFunc("/ws/status", GetWSStatus(wsHub)).Methods("GET")
+
+	// P2P 상태 API
+	apiRouter.HandleFunc("/p2p/peers", GetP2PPeers(p2pService)).Methods("GET")
+	apiRouter.HandleFunc("/p2p/status", GetP2PStatus(p2pService)).Methods("GET")
 
 	return r
 }

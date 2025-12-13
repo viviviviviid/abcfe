@@ -10,6 +10,7 @@ import (
 	"github.com/abcfe/abcfe-node/common/logger"
 	"github.com/abcfe/abcfe-node/consensus"
 	"github.com/abcfe/abcfe-node/core"
+	"github.com/abcfe/abcfe-node/p2p"
 	"github.com/abcfe/abcfe-node/wallet"
 )
 
@@ -21,6 +22,7 @@ type Server struct {
 	wallet     *wallet.WalletManager
 	wsHub      *api.WSHub
 	consensus  *consensus.Consensus
+	p2p        *p2p.P2PService
 }
 
 // NewServer API 서버 인스턴스 생성
@@ -40,7 +42,7 @@ func (s *Server) Start() error {
 	// WebSocket Hub 시작
 	go s.wsHub.Run()
 
-	router := setupRouter(s.blockchain, s.wallet, s.wsHub, s.consensus)
+	router := setupRouter(s.blockchain, s.wallet, s.wsHub, s.consensus, s.p2p)
 
 	addr := fmt.Sprintf(":%d", s.port)
 	s.httpServer = &http.Server{
@@ -71,4 +73,14 @@ func (s *Server) Stop(ctx context.Context) error {
 // GetWSHub WebSocket Hub 반환
 func (s *Server) GetWSHub() *api.WSHub {
 	return s.wsHub
+}
+
+// SetP2P P2P 서비스 설정
+func (s *Server) SetP2P(p2pService *p2p.P2PService) {
+	s.p2p = p2pService
+}
+
+// GetP2P P2P 서비스 반환
+func (s *Server) GetP2P() *p2p.P2PService {
+	return s.p2p
 }

@@ -116,6 +116,9 @@ func New(configPath string) (*App, error) {
 	// REST API 서버 초기화
 	app.restServer = rest.NewServer(app.Conf.Server.RestPort, app.BlockChain, app.Wallet, app.Consensus)
 
+	// REST 서버에 P2P 서비스 설정
+	app.restServer.SetP2P(app.P2PService)
+
 	// 블록 커밋 시 P2P 브로드캐스트 및 WebSocket 알림 콜백 설정
 	app.ConsensusEngine.SetBlockCommitCallback(func(block *core.Block) {
 		// P2P 브로드캐스트
@@ -132,6 +135,9 @@ func New(configPath string) (*App, error) {
 
 	// ConsensusEngine에 P2P 브로드캐스터 설정
 	app.ConsensusEngine.SetP2PBroadcaster(app.P2PService)
+
+	// ConsensusEngine에 BlockSyncer 설정 (타임아웃 시 동기화용)
+	app.ConsensusEngine.SetBlockSyncer(app.P2PService)
 
 	// P2P에서 Proposal 수신 시 ConsensusEngine으로 전달
 	app.P2PService.SetProposalHandler(func(height uint64, round uint32, blockHash prt.Hash, block *core.Block) {
@@ -216,7 +222,10 @@ func New(configPath string) (*App, error) {
 		logger.Debug("[BlockHandler] Block ", block.Header.Height, " added successfully")
 
 		logger.Info("[BlockHandler] Block synced from peer: height=", block.Header.Height)
-		// PoA: 컨센서스 높이는 runRound()에서 블록체인 높이 기준으로 자동 동기화됨
+		// BFT: 컨센서스 높이 동기화 - 블록 수신 시 다음 높이로 업데이트
+		if app.Consensus != nil {
+			app.Consensus.UpdateHeight(block.Header.Height + 1)
+		}
 
 		// 다른 피어들에게 재브로드캐스트 (gossip)
 		if app.P2PService != nil {
@@ -250,7 +259,10 @@ func New(configPath string) (*App, error) {
 			}
 
 			logger.Debug("[BlockHandler] Pending block added: height=", nextBlock.Header.Height)
-			// PoA: 컨센서스 높이는 runRound()에서 블록체인 높이 기준으로 자동 동기화됨
+			// BFT: 컨센서스 높이 동기화
+			if app.Consensus != nil {
+				app.Consensus.UpdateHeight(nextBlock.Header.Height + 1)
+			}
 
 			block = nextBlock
 		}
@@ -343,28 +355,26 @@ func (p *App) StartAll() error {
 			}
 		}()
 		
-		// 주기적 동기화 시작 (sync-only 노드인 경우에만)
-		if !p.Conf.Common.BlockProducer {
-			go p.startPeriodicSync()
-		}
+		// 주기적 동기화 시작 (모든 노드에서 - BFT 참여를 위해 동기화 필요)
+		go p.startPeriodicSync()
 	}
 
-	// BlockProducer인 경우에만 Consensus 시작
-	if p.Conf.Common.BlockProducer {
-		if err := p.StartConsensus(); err != nil {
-			return err
-		}
-	} else {
-		logger.Info("Running as sync-only node (not a block producer)")
+	// BFT 모드: 모든 검증자 노드에서 컨센서스 시작 (투표 참여를 위해)
+	// BlockProducer 여부와 관계없이 컨센서스 엔진은 모든 노드에서 실행되어야 함
+	if err := p.StartConsensus(); err != nil {
+		return err
+	}
+	if !p.Conf.Common.BlockProducer {
+		logger.Info("Running as validator node (participating in BFT consensus)")
 	}
 
 	logger.Info("All services started successfully")
 	return nil
 }
 
-// startPeriodicSync 주기적 블록 동기화 (sync-only 노드용)
+// startPeriodicSync 주기적 블록 동기화 (모든 노드에서 실행)
 func (p *App) startPeriodicSync() {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -374,10 +384,9 @@ func (p *App) startPeriodicSync() {
 		case <-ticker.C:
 			if p.P2PService.GetPeerCount() > 0 {
 				currentHeight, _ := p.BlockChain.GetLatestHeight()
-				logger.Debug("[Sync] Periodic sync check at height ", currentHeight)
-				
+
 				if err := p.P2PService.SyncBlocks(); err != nil {
-					logger.Debug("[Sync] Sync check: ", err)
+					logger.Debug("[Sync] Sync check at height ", currentHeight, ": ", err)
 				}
 			}
 		}

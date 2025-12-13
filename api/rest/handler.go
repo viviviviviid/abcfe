@@ -11,6 +11,7 @@ import (
 	"github.com/abcfe/abcfe-node/common/utils"
 	"github.com/abcfe/abcfe-node/consensus"
 	"github.com/abcfe/abcfe-node/core"
+	"github.com/abcfe/abcfe-node/p2p"
 	"github.com/abcfe/abcfe-node/wallet"
 	"github.com/gorilla/mux"
 )
@@ -303,6 +304,19 @@ func formatBlockResp(block *core.Block) (BlockResp, error) {
 		txDetails[i] = formatTxResp(tx)
 	}
 
+	// BFT CommitSignatures 변환
+	var commitSigs []CommitSignatureResp
+	if len(block.CommitSignatures) > 0 {
+		commitSigs = make([]CommitSignatureResp, len(block.CommitSignatures))
+		for i, sig := range block.CommitSignatures {
+			commitSigs[i] = CommitSignatureResp{
+				ValidatorAddress: utils.AddressToString(sig.ValidatorAddress),
+				Signature:        utils.SignatureToString(sig.Signature),
+				Timestamp:        sig.Timestamp,
+			}
+		}
+	}
+
 	response := BlockResp{
 		Header: BlockHeaderResp{
 			Hash:       utils.HashToString(block.Header.Hash),
@@ -312,9 +326,10 @@ func formatBlockResp(block *core.Block) (BlockResp, error) {
 			MerkleRoot: utils.HashToString(block.Header.MerkleRoot),
 			Timestamp:  block.Header.Timestamp,
 		},
-		Transactions: txDetails,
-		Proposer:     utils.AddressToString(block.Proposer),
-		Signature:    utils.SignatureToString(block.Signature),
+		Transactions:     txDetails,
+		Proposer:         utils.AddressToString(block.Proposer),
+		Signature:        utils.SignatureToString(block.Signature),
+		CommitSignatures: commitSigs,
 	}
 
 	return response, nil
@@ -734,6 +749,57 @@ func GetConsensusStatus(cons *consensus.Consensus) http.HandlerFunc {
 			"proposer":      proposerAddr,
 			"validators":    validators,
 			"votingPower":   votingPower,
+		}
+
+		sendResp(w, http.StatusOK, status, nil)
+	}
+}
+
+// GetP2PPeers P2P 피어 목록 조회
+func GetP2PPeers(p2pService *p2p.P2PService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if p2pService == nil {
+			sendResp(w, http.StatusInternalServerError, nil, fmt.Errorf("p2p service not initialized"))
+			return
+		}
+
+		peers := p2pService.GetPeers()
+		peerList := make([]map[string]interface{}, 0, len(peers))
+
+		for _, peer := range peers {
+			peerInfo := map[string]interface{}{
+				"id":         peer.ID,
+				"address":    peer.Address,
+				"state":      peer.State,
+				"version":    peer.Version,
+				"bestHeight": peer.BestHeight,
+				"lastSeen":   peer.LastSeen.Unix(),
+				"inbound":    peer.Inbound,
+			}
+			peerList = append(peerList, peerInfo)
+		}
+
+		response := map[string]interface{}{
+			"count": len(peerList),
+			"peers": peerList,
+		}
+
+		sendResp(w, http.StatusOK, response, nil)
+	}
+}
+
+// GetP2PStatus P2P 노드 상태 조회
+func GetP2PStatus(p2pService *p2p.P2PService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if p2pService == nil {
+			sendResp(w, http.StatusInternalServerError, nil, fmt.Errorf("p2p service not initialized"))
+			return
+		}
+
+		status := map[string]interface{}{
+			"nodeId":    p2pService.GetNodeID(),
+			"running":   p2pService.IsRunning(),
+			"peerCount": p2pService.GetPeerCount(),
 		}
 
 		sendResp(w, http.StatusOK, status, nil)

@@ -418,20 +418,18 @@ func (n *Node) sendMessage(peer *Peer, msg *Message) error {
 		return err
 	}
 
-	// 메시지 길이를 4바이트 헤더로 추가
+	// 헤더 + 메시지를 하나의 버퍼로 합쳐서 원자적으로 전송
+	// (별도 Write 호출 시 동시 전송에서 메시지가 뒤섞일 수 있음)
 	msgLen := uint32(len(data))
-	header := make([]byte, 4)
-	header[0] = byte(msgLen >> 24)
-	header[1] = byte(msgLen >> 16)
-	header[2] = byte(msgLen >> 8)
-	header[3] = byte(msgLen)
+	packet := make([]byte, 4+len(data))
+	packet[0] = byte(msgLen >> 24)
+	packet[1] = byte(msgLen >> 16)
+	packet[2] = byte(msgLen >> 8)
+	packet[3] = byte(msgLen)
+	copy(packet[4:], data)
 
-	// 헤더 + 메시지 전송
 	peer.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
-	if _, err := peer.Conn.Write(header); err != nil {
-		return err
-	}
-	_, err = peer.Conn.Write(data)
+	_, err = peer.Conn.Write(packet)
 	return err
 }
 
@@ -482,7 +480,7 @@ func (n *Node) connectToBootNodes() {
 
 // maintainPeers 피어 유지보수
 func (n *Node) maintainPeers() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -492,7 +490,29 @@ func (n *Node) maintainPeers() {
 		case <-ticker.C:
 			n.pingPeers()
 			n.removeInactivePeers()
+			// 피어가 없으면 부트노드에 재연결 시도
+			n.reconnectIfNeeded()
 		}
+	}
+}
+
+// reconnectIfNeeded 피어가 없으면 부트노드에 재연결
+func (n *Node) reconnectIfNeeded() {
+	activeCount := n.GetPeerCount()
+	if activeCount > 0 {
+		return
+	}
+
+	logger.Warn("[P2P] No active peers, attempting to reconnect to boot nodes...")
+
+	for _, addr := range n.BootNodes {
+		go func(address string) {
+			if err := n.Connect(address); err != nil {
+				logger.Debug("[P2P] Failed to reconnect to boot node ", address, ": ", err)
+			} else {
+				logger.Info("[P2P] Reconnected to boot node: ", address)
+			}
+		}(addr)
 	}
 }
 

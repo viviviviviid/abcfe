@@ -164,6 +164,7 @@ print(pubkey_bytes.hex())
     VALIDATOR_ADDRS+=("$ADDR")
     VALIDATOR_PUBKEYS+=("$PUBKEY")
     echo "  ✓ Node $i: ${ADDR:0:16}..."
+    sleep 1
 done
 
 # 검증자 목록 TOML 생성
@@ -179,6 +180,7 @@ generate_validators_toml() {
         else
             echo "  { address = \"$ADDR\", publicKey = \"$PUBKEY\", votingPower = 1000 },"
         fi
+        sleep 1
     done
     echo "]"
 }
@@ -342,9 +344,9 @@ EOFGEN
 
     ./abcfed --config="config/config_poa_genesis.toml" > /tmp/poa_genesis.log 2>&1 &
     GENESIS_PID=$!
-    sleep 2
+    sleep 5
     kill $GENESIS_PID 2>/dev/null || true
-    sleep 1
+    sleep 5
     echo "  ✓ 제네시스 블록 생성 완료"
 
     # 다른 노드에 DB 복사
@@ -365,7 +367,7 @@ echo -e "${BLUE}노드 순차 시작 중...${NC}"
 echo "  Node 1 시작 (Boot, REST: 8000, P2P: 30303)..."
 ./abcfed --config="config/config_poa_node1.toml" > /tmp/poa_node1.log 2>&1 &
 echo "  PID: $!"
-sleep 2
+sleep 5
 
 # 나머지 노드들
 for i in $(seq 2 $NODE_COUNT); do
@@ -374,7 +376,7 @@ for i in $(seq 2 $NODE_COUNT); do
     echo "  Node $i 시작 (REST: $REST_PORT, P2P: $P2P_PORT)..."
     ./abcfed --config="config/config_poa_node${i}.toml" > /tmp/poa_node${i}.log 2>&1 &
     echo "  PID: $!"
-    sleep 1
+    sleep 5
 done
 
 echo ""
@@ -402,12 +404,24 @@ for i in $(seq 1 $NODE_COUNT); do
     P2P_PORT=$((30303 + i - 1))
 
     STATUS=$(curl -s http://localhost:${REST_PORT}/api/v1/status 2>/dev/null)
+    PEER_STATUS=$(curl -s http://localhost:${REST_PORT}/api/v1/p2p/status 2>/dev/null)
+
     if [ -n "$STATUS" ]; then
         HEIGHT=$(echo "$STATUS" | python3 -c "import sys, json; print(json.load(sys.stdin).get('data', {}).get('currentHeight', 'N/A'))" 2>/dev/null || echo "N/A")
-        PEERS=$(echo "$STATUS" | python3 -c "import sys, json; print(json.load(sys.stdin).get('data', {}).get('peerCount', 'N/A'))" 2>/dev/null || echo "N/A")
+    else
+        HEIGHT="ERROR"
+    fi
+
+    if [ -n "$PEER_STATUS" ]; then
+        PEERS=$(echo "$PEER_STATUS" | python3 -c "import sys, json; print(json.load(sys.stdin).get('data', {}).get('peerCount', 'N/A'))" 2>/dev/null || echo "N/A")
+    else
+        PEERS="-"
+    fi
+
+    if [ "$HEIGHT" != "ERROR" ]; then
         printf "%-8s %-10s %-10s ${GREEN}%-10s${NC} %-10s\n" "Node $i" "$REST_PORT" "$P2P_PORT" "$HEIGHT" "$PEERS"
     else
-        printf "%-8s %-10s %-10s ${RED}%-10s${NC} %-10s\n" "Node $i" "$REST_PORT" "$P2P_PORT" "ERROR" "-"
+        printf "%-8s %-10s %-10s ${RED}%-10s${NC} %-10s\n" "Node $i" "$REST_PORT" "$P2P_PORT" "$HEIGHT" "$PEERS"
     fi
 done
 

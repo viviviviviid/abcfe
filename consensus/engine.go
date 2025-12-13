@@ -17,6 +17,12 @@ type P2PBroadcaster interface {
 	BroadcastVote(height uint64, round uint32, blockHash prt.Hash, voteType uint8, voterID string, signature prt.Signature) error
 }
 
+// BlockSyncer 블록 동기화 인터페이스
+type BlockSyncer interface {
+	SyncBlocks() error
+	GetPeerCount() int
+}
+
 // ConsensusEngine 컨센서스 엔진 (실행 로직)
 type ConsensusEngine struct {
 	mu sync.RWMutex
@@ -26,6 +32,9 @@ type ConsensusEngine struct {
 
 	// P2P 브로드캐스터
 	p2p P2PBroadcaster
+
+	// 블록 동기화 (P2PService)
+	syncer BlockSyncer
 
 	// 투표 관리
 	prevotes   *VoteSet
@@ -40,6 +49,11 @@ type ConsensusEngine struct {
 	// 실행 제어
 	running bool
 	stopCh  chan struct{}
+
+	// 라운드 타임아웃
+	roundTimer       *time.Timer
+	roundTimerMu     sync.Mutex
+	consecutiveTimeouts int // 연속 타임아웃 카운터
 }
 
 // NewConsensusEngine 새 컨센서스 엔진 생성
@@ -63,6 +77,13 @@ func (e *ConsensusEngine) SetP2PBroadcaster(p2p P2PBroadcaster) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.p2p = p2p
+}
+
+// SetBlockSyncer 블록 동기화 설정
+func (e *ConsensusEngine) SetBlockSyncer(syncer BlockSyncer) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.syncer = syncer
 }
 
 // Start 컨센서스 엔진 시작
@@ -166,14 +187,17 @@ func (e *ConsensusEngine) runRound() {
 	if isLocalProposer {
 		e.proposeBlock()
 
-		// PoA 모드: 제안자가 블록을 생성하면 바로 커밋
-		// (투표 기반 합의 대신 권한 기반 즉시 커밋)
+		// BFT 모드: Proposal 브로드캐스트 후 투표 수집
 		if e.proposedBlock != nil {
-			e.commitBlock(e.proposedBlock)
+			e.broadcastProposal()
 		}
+	} else {
+		// 비제안자: Proposal 대기 - 타임아웃 타이머 시작
+		// 타임아웃 시 다음 라운드로 진행 (handleRoundTimeout에서 처리)
+		e.prevotes = NewVoteSet(nextBlockHeight, 0, VoteTypePrevote)
+		e.precommits = NewVoteSet(nextBlockHeight, 0, VoteTypePrecommit)
+		e.startRoundTimer()
 	}
-	// PoA 모드에서는 자기 차례가 아니면 대기 (라운드 증가 없음)
-	// 다른 노드가 생성한 블록을 P2P로 받으면 높이가 업데이트됨
 }
 
 // produceBlockSolo 단독 노드 모드에서 블록 생성
@@ -276,9 +300,47 @@ func (e *ConsensusEngine) proposeBlock() {
 	e.proposedBlock = newBlock
 
 	logger.Info("[Consensus] Proposed block ", newBlock.Header.Height, " (hash: ", utils.HashToString(newBlock.Header.Hash)[:16], ", proposer: ", utils.AddressToString(proposerAddr)[:16], ")")
+}
 
-	// PoA 모드: Proposal 브로드캐스트와 투표 과정 생략
-	// 블록은 commitBlock() 후 NewBlock 메시지로 브로드캐스트됨
+// broadcastProposal Proposal 브로드캐스트 및 투표 시작 (BFT 모드)
+func (e *ConsensusEngine) broadcastProposal() {
+	if e.p2p == nil || e.proposedBlock == nil {
+		return
+	}
+
+	if e.consensus.LocalValidator == nil {
+		return
+	}
+
+	height := e.consensus.CurrentHeight
+	round := e.consensus.CurrentRound
+	blockHash := e.proposedBlock.Header.Hash
+	proposerID := utils.AddressToString(e.consensus.LocalValidator.Address)
+
+	// VoteSet 초기화
+	e.prevotes = NewVoteSet(height, round, VoteTypePrevote)
+	e.precommits = NewVoteSet(height, round, VoteTypePrecommit)
+
+	// P2P로 Proposal 브로드캐스트
+	if err := e.p2p.BroadcastProposal(
+		height,
+		round,
+		blockHash,
+		e.proposedBlock,
+		proposerID,
+		e.proposedBlock.Signature,
+	); err != nil {
+		logger.Error("[Consensus] Failed to broadcast proposal: ", err)
+		return
+	}
+
+	logger.Info("[Consensus] Broadcast proposal at height ", height, " round ", round)
+
+	// 라운드 타임아웃 타이머 시작
+	e.startRoundTimer()
+
+	// 로컬 prevote 투표 (제안자도 투표에 참여)
+	e.castVote(VoteTypePrevote, blockHash)
 }
 
 // HandleProposal 제안 메시지 처리 (P2P로부터)
@@ -286,19 +348,55 @@ func (e *ConsensusEngine) HandleProposal(height uint64, round uint32, blockHash 
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	if height != e.consensus.CurrentHeight || round != e.consensus.CurrentRound {
+	// 이미 이 높이의 블록이 커밋되었는지 확인
+	currentHeight, _ := e.blockchain.GetLatestHeight()
+	if height <= currentHeight {
+		logger.Debug("[Consensus] Proposal for already committed height ", height, ", ignoring")
 		return
 	}
 
-	// 블록 검증
+	// 뒤처진 노드인 경우: 컨센서스 높이를 동기화
+	// 예: 블록체인 높이가 2이고 Proposal height가 3인데 컨센서스 높이가 2인 경우
+	expectedNextHeight := currentHeight + 1
+	if height == expectedNextHeight && e.consensus.CurrentHeight != height {
+		logger.Info("[Consensus] Syncing consensus height from ", e.consensus.CurrentHeight, " to ", height)
+		e.consensus.mu.Lock()
+		e.consensus.CurrentHeight = height
+		e.consensus.CurrentRound = round
+		e.consensus.mu.Unlock()
+	}
+
+	// 높이/라운드 검증
+	if height != e.consensus.CurrentHeight || round != e.consensus.CurrentRound {
+		logger.Debug("[Consensus] Proposal height/round mismatch: expected ", e.consensus.CurrentHeight, "/", e.consensus.CurrentRound, ", got ", height, "/", round)
+		return
+	}
+
+	// 제안자 검증: 해당 높이/라운드의 정당한 제안자인지 확인
+	expectedProposer := e.consensus.Selector.SelectProposer(height, round)
+	if expectedProposer == nil {
+		logger.Error("[Consensus] No expected proposer for height ", height, " round ", round)
+		return
+	}
+	if block.Proposer != expectedProposer.Address {
+		logger.Error("[Consensus] Invalid proposer: expected ", utils.AddressToString(expectedProposer.Address), ", got ", utils.AddressToString(block.Proposer))
+		return
+	}
+
+	// 블록 검증 (서명 포함)
 	if err := e.blockchain.ValidateBlock(*block); err != nil {
 		logger.Error("[Consensus] Invalid proposed block: ", err)
 		return
 	}
 
+	logger.Info("[Consensus] Received valid proposal at height ", height, " round ", round, " from ", utils.AddressToString(block.Proposer)[:16])
+
 	e.proposedBlock = block
 	e.prevotes = NewVoteSet(height, round, VoteTypePrevote)
 	e.precommits = NewVoteSet(height, round, VoteTypePrecommit)
+
+	// 라운드 타임아웃 타이머 시작
+	e.startRoundTimer()
 
 	// Prevote 전송 (로컬 검증자인 경우)
 	if e.consensus.LocalValidator != nil {
@@ -318,29 +416,39 @@ func (e *ConsensusEngine) HandleVote(vote *Vote) {
 	// 투표자의 voting power 조회
 	validator := e.consensus.ValidatorSet.GetValidator(vote.VoterID)
 	if validator == nil {
+		logger.Debug("[Consensus] Unknown voter: ", utils.AddressToString(vote.VoterID)[:16])
 		return
 	}
 
 	totalPower := e.consensus.ValidatorSet.TotalVotingPower
+	voterAddr := utils.AddressToString(vote.VoterID)[:16]
 
 	switch vote.Type {
 	case VoteTypePrevote:
 		if e.prevotes != nil {
-			e.prevotes.AddVote(vote, validator.VotingPower)
+			added := e.prevotes.AddVote(vote, validator.VotingPower)
+			if added {
+				logger.Info("[Consensus] Prevote received from ", voterAddr, " (", e.prevotes.VotedPower, "/", totalPower, " = ", len(e.prevotes.Votes), " votes)")
+			}
 
 			// 2/3 이상이면 precommit으로
 			if e.prevotes.HasTwoThirdsMajority(totalPower) {
+				logger.Info("[Consensus] Prevote 2/3+ reached at height ", vote.Height, " (", e.prevotes.VotedPower, "/", totalPower, ")")
 				e.castVote(VoteTypePrecommit, vote.BlockHash)
 			}
 		}
 
 	case VoteTypePrecommit:
 		if e.precommits != nil {
-			e.precommits.AddVote(vote, validator.VotingPower)
+			added := e.precommits.AddVote(vote, validator.VotingPower)
+			if added {
+				logger.Info("[Consensus] Precommit received from ", voterAddr, " (", e.precommits.VotedPower, "/", totalPower, " = ", len(e.precommits.Votes), " votes)")
+			}
 
 			// 2/3 이상이면 커밋
 			if e.precommits.HasTwoThirdsMajority(totalPower) && e.proposedBlock != nil {
-				e.commitBlock(e.proposedBlock)
+				logger.Info("[Consensus] Precommit 2/3+ reached at height ", vote.Height, " (", e.precommits.VotedPower, "/", totalPower, "), committing block")
+				e.commitBlockWithSignatures(e.proposedBlock)
 			}
 		}
 	}
@@ -400,14 +508,18 @@ func (e *ConsensusEngine) castVote(voteType VoteType, blockHash prt.Hash) {
 		if e.precommits != nil {
 			e.precommits.AddVote(vote, validator.VotingPower)
 			if e.precommits.HasTwoThirdsMajority(totalPower) && e.proposedBlock != nil {
-				e.commitBlock(e.proposedBlock)
+				logger.Info("[Consensus] Local precommit triggered 2/3+ at height ", e.consensus.CurrentHeight)
+				e.commitBlockWithSignatures(e.proposedBlock)
 			}
 		}
 	}
 }
 
-// commitBlock 블록 커밋
+// commitBlock 블록 커밋 (단독 노드용 - 서명 없이)
 func (e *ConsensusEngine) commitBlock(block *core.Block) {
+	// 타임아웃 타이머 취소
+	e.stopRoundTimer()
+
 	e.consensus.mu.Lock()
 	e.consensus.State = StateCommitting
 	e.consensus.mu.Unlock()
@@ -432,6 +544,179 @@ func (e *ConsensusEngine) commitBlock(block *core.Block) {
 	e.proposedBlock = nil
 	e.prevotes = nil
 	e.precommits = nil
+}
+
+// commitBlockWithSignatures BFT 합의 후 블록 커밋 (검증자 서명 포함)
+func (e *ConsensusEngine) commitBlockWithSignatures(block *core.Block) {
+	// 타임아웃 타이머 취소
+	e.stopRoundTimer()
+
+	// 연속 타임아웃 카운터 리셋
+	e.consecutiveTimeouts = 0
+
+	e.consensus.mu.Lock()
+	e.consensus.State = StateCommitting
+	e.consensus.mu.Unlock()
+
+	// precommits에서 CommitSignatures 생성
+	if e.precommits != nil {
+		var commitSigs []core.CommitSignature
+		for _, vote := range e.precommits.Votes {
+			commitSigs = append(commitSigs, core.CommitSignature{
+				ValidatorAddress: vote.VoterID,
+				Signature:        vote.Signature,
+				Timestamp:        vote.Timestamp,
+			})
+		}
+		block.CommitSignatures = commitSigs
+		logger.Info("[Consensus] Block ", block.Header.Height, " has ", len(commitSigs), " commit signatures")
+	}
+
+	// 블록 추가
+	success, err := e.blockchain.AddBlock(*block)
+	if !success || err != nil {
+		logger.Error("[Consensus] Failed to commit block: ", err)
+		e.consensus.IncrementRound()
+		return
+	}
+
+	logger.Info("[Consensus] Block ", block.Header.Height, " committed with BFT consensus (hash: ", utils.HashToString(block.Header.Hash)[:16], ", txs: ", len(block.Transactions), ", validators: ", len(block.CommitSignatures), ")")
+
+	// 콜백 호출 (P2P 브로드캐스트)
+	if e.onBlockCommit != nil {
+		e.onBlockCommit(block)
+	}
+
+	// 다음 높이로
+	e.consensus.UpdateHeight(block.Header.Height + 1)
+	e.proposedBlock = nil
+	e.prevotes = nil
+	e.precommits = nil
+}
+
+// startRoundTimer 라운드 타임아웃 타이머 시작
+func (e *ConsensusEngine) startRoundTimer() {
+	e.roundTimerMu.Lock()
+	defer e.roundTimerMu.Unlock()
+
+	// 기존 타이머 취소
+	if e.roundTimer != nil {
+		e.roundTimer.Stop()
+	}
+
+	height := e.consensus.CurrentHeight
+	round := e.consensus.CurrentRound
+
+	e.roundTimer = time.AfterFunc(time.Duration(RoundTimeoutMs)*time.Millisecond, func() {
+		e.handleRoundTimeout(height, round)
+	})
+
+	logger.Debug("[Consensus] Round timer started for height ", height, " round ", round, " (", RoundTimeoutMs, "ms)")
+}
+
+// stopRoundTimer 라운드 타임아웃 타이머 취소
+func (e *ConsensusEngine) stopRoundTimer() {
+	e.roundTimerMu.Lock()
+	defer e.roundTimerMu.Unlock()
+
+	if e.roundTimer != nil {
+		e.roundTimer.Stop()
+		e.roundTimer = nil
+	}
+}
+
+// handleRoundTimeout 라운드 타임아웃 처리
+func (e *ConsensusEngine) handleRoundTimeout(height uint64, round uint32) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	// 이미 다음 높이로 진행했거나 라운드가 변경된 경우 무시
+	if e.consensus.CurrentHeight != height || e.consensus.CurrentRound != round {
+		e.consecutiveTimeouts = 0 // 정상 진행 시 리셋
+		return
+	}
+
+	e.consecutiveTimeouts++
+	logger.Warn("[Consensus] Round timeout at height ", height, " round ", round, " (consecutive: ", e.consecutiveTimeouts, ")")
+
+	// 연속 타임아웃이 3회 이상이면 블록 동기화 시도
+	if e.consecutiveTimeouts >= 3 {
+		logger.Warn("[Consensus] Too many consecutive timeouts, attempting block sync...")
+		e.consecutiveTimeouts = 0
+
+		// 현재 블록체인 높이 확인
+		currentHeight, _ := e.blockchain.GetLatestHeight()
+
+		// 블록 동기화 시도 (별도 고루틴에서)
+		if e.syncer != nil && e.syncer.GetPeerCount() > 0 {
+			go func() {
+				if err := e.syncer.SyncBlocks(); err != nil {
+					logger.Debug("[Consensus] Block sync during timeout: ", err)
+				} else {
+					logger.Info("[Consensus] Block sync completed after timeout")
+				}
+			}()
+		}
+
+		// 동기화 후 블록체인 높이가 변경되었으면 컨센서스 높이 업데이트
+		newHeight, _ := e.blockchain.GetLatestHeight()
+		if newHeight > currentHeight {
+			logger.Info("[Consensus] Blockchain advanced from ", currentHeight, " to ", newHeight, ", updating consensus")
+			e.consensus.mu.Lock()
+			e.consensus.CurrentHeight = newHeight + 1
+			e.consensus.CurrentRound = 0
+			e.consensus.mu.Unlock()
+			e.proposedBlock = nil
+			e.prevotes = nil
+			e.precommits = nil
+			return
+		}
+	}
+
+	// 라운드 증가 → 다음 제안자의 차례
+	e.consensus.IncrementRound()
+	e.proposedBlock = nil
+	e.prevotes = nil
+	e.precommits = nil
+
+	// 다음 라운드의 제안자가 로컬 노드인지 확인
+	nextRound := e.consensus.CurrentRound
+	proposer := e.consensus.Selector.SelectProposer(height, nextRound)
+	if proposer != nil && e.consensus.LocalValidator != nil {
+		if proposer.Address == e.consensus.LocalValidator.Address {
+			logger.Info("[Consensus] Local node is proposer for round ", nextRound, ", proposing block")
+			e.proposeBlock()
+			if e.proposedBlock != nil {
+				e.broadcastProposalInternal()
+			}
+		}
+	}
+
+	// 다음 라운드 타이머 시작
+	e.startRoundTimer()
+}
+
+// broadcastProposalInternal 내부용 Proposal 브로드캐스트 (뮤텍스 없이)
+func (e *ConsensusEngine) broadcastProposalInternal() {
+	if e.p2p == nil || e.proposedBlock == nil || e.consensus.LocalValidator == nil {
+		return
+	}
+
+	height := e.consensus.CurrentHeight
+	round := e.consensus.CurrentRound
+	blockHash := e.proposedBlock.Header.Hash
+	proposerID := utils.AddressToString(e.consensus.LocalValidator.Address)
+
+	e.prevotes = NewVoteSet(height, round, VoteTypePrevote)
+	e.precommits = NewVoteSet(height, round, VoteTypePrecommit)
+
+	if err := e.p2p.BroadcastProposal(height, round, blockHash, e.proposedBlock, proposerID, e.proposedBlock.Signature); err != nil {
+		logger.Error("[Consensus] Failed to broadcast proposal: ", err)
+		return
+	}
+
+	logger.Info("[Consensus] Broadcast proposal at height ", height, " round ", round)
+	e.castVote(VoteTypePrevote, blockHash)
 }
 
 // GetStatus 현재 상태 조회

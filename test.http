@@ -11,7 +11,7 @@ GET http://localhost:8001/api/v1/status
 GET http://localhost:8000/api/v1/blocks
 
 ### 포트 8000
-GET http://localhost:8000/api/v1/block/height/0
+GET http://localhost:8001/api/v1/block/height/0
 
 ### 블록 해시로 조회
 GET http://localhost:8000/api/v1/block/hash/9fb357de59ad40056d8136af1e8eef2d38fcf2bdb596d184fb5dd162bf2e6142

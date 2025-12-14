@@ -2,13 +2,11 @@ package core
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/abcfe/abcfe-node/common/utils"
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
-
-// 제네시스 블록의 고정 타임스탬프 (2024-01-01 00:00:00 UTC)
-const GenesisTimestamp int64 = 1704067200
 
 func (p *BlockChain) SetGenesisBlock() (*Block, error) {
 	var defaultPrevHash prt.Hash
@@ -20,7 +18,10 @@ func (p *BlockChain) SetGenesisBlock() (*Block, error) {
 		defaultPrevHash[i] = 0x00
 	}
 
-	txs, err := p.setGenesisTxs()
+	// 제네시스 블록 생성 시점의 타임스탬프 사용
+	genesisTimestamp := time.Now().Unix()
+
+	txs, err := p.setGenesisTxs(genesisTimestamp)
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +33,7 @@ func (p *BlockChain) SetGenesisBlock() (*Block, error) {
 		PrevHash:   defaultPrevHash,
 		Version:    p.cfg.Version.Protocol,
 		Height:     0,
-		Timestamp:  GenesisTimestamp,
+		Timestamp:  genesisTimestamp,
 		MerkleRoot: merkleRoot,
 	}
 
@@ -50,7 +51,7 @@ func (p *BlockChain) SetGenesisBlock() (*Block, error) {
 	return block, nil
 }
 
-func (p *BlockChain) setGenesisTxs() ([]*Transaction, error) {
+func (p *BlockChain) setGenesisTxs(genesisTimestamp int64) ([]*Transaction, error) {
 	txIns := []*TxInput{}
 	txOuts := []*TxOutput{}
 
@@ -78,7 +79,7 @@ func (p *BlockChain) setGenesisTxs() ([]*Transaction, error) {
 	txs := []*Transaction{
 		{
 			Version:   p.cfg.Version.Transaction,
-			Timestamp: GenesisTimestamp,
+			Timestamp: genesisTimestamp,
 			Inputs:    txIns,
 			Outputs:   txOuts,
 			Memo:      "ABCFE Chain Genesis Block",

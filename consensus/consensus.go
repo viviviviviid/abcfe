@@ -287,6 +287,8 @@ func (c *Consensus) ValidateProposerSignature(proposer prt.Address, blockHash pr
 }
 
 // IsValidProposer 해당 높이의 유효한 제안자인지 확인 (core.ProposerValidator 인터페이스 구현)
+// BFT 모드에서는 라운드에 따라 제안자가 달라지므로, 검증자 목록에 있는지만 확인
+// 라운드별 제안자 검증은 consensus/engine.go의 HandleProposal에서 수행
 func (c *Consensus) IsValidProposer(proposer prt.Address, height uint64) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
@@ -298,11 +300,7 @@ func (c *Consensus) IsValidProposer(proposer prt.Address, height uint64) bool {
 		return false
 	}
 
-	// PoA에서는 라운드 로빈으로 제안자가 결정되므로, 해당 높이의 예상 제안자와 비교
-	expectedProposer := c.Selector.SelectProposer(height, 0)
-	if expectedProposer == nil {
-		return false
-	}
-
-	return expectedProposer.Address == proposer
+	// BFT 모드: 검증자 목록에 있으면 유효함
+	// (특정 라운드의 제안자인지는 HandleProposal에서 이미 검증됨)
+	return true
 }

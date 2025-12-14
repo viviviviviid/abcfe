@@ -28,7 +28,7 @@ const (
 type Peer struct {
 	ID         string
 	Address    string
-	Port       int
+	Port       int        // 상대방의 Listen Port (핸드셰이크에서 받음)
 	Conn       net.Conn
 	State      PeerState
 	Version    string
@@ -55,6 +55,12 @@ type Node struct {
 
 	// 메시지 핸들러
 	MessageHandler func(*Message, *Peer)
+
+	// 피어 연결 완료 콜백 (피어 디스커버리용)
+	OnPeerConnected func(*Peer)
+
+	// 주기적 피어 교환 콜백
+	OnPeerExchange func([]*Peer)
 
 	// 리스너
 	listener net.Listener
@@ -362,9 +368,10 @@ func (n *Node) handleHandshake(msg *Message, peer *Peer) {
 	peer.ID = payload.NodeID
 	peer.Version = payload.Version
 	peer.BestHeight = payload.BestHeight
+	peer.Port = payload.ListenPort // 상대방의 Listen Port 저장
 	peer.State = PeerStateActive
-	
-	logger.Info("[P2P] Peer info updated: ID=", peer.ID, " BestHeight=", peer.BestHeight)
+
+	logger.Info("[P2P] Peer info updated: ID=", peer.ID, " BestHeight=", peer.BestHeight, " ListenPort=", peer.Port)
 
 	// ACK 응답 (인바운드인 경우)
 	if peer.Inbound && msg.Type == MsgTypeHandshake {
@@ -375,6 +382,11 @@ func (n *Node) handleHandshake(msg *Message, peer *Peer) {
 	// 피어 등록
 	n.addPeer(peer)
 	logger.Info("[P2P] Peer activated: ", peer.ID, " (", peer.Address, ")")
+
+	// 피어 연결 완료 콜백 호출 (피어 디스커버리 트리거)
+	if n.OnPeerConnected != nil {
+		go n.OnPeerConnected(peer)
+	}
 }
 
 // sendHandshakeAck 핸드셰이크 ACK 전송
@@ -481,7 +493,9 @@ func (n *Node) connectToBootNodes() {
 // maintainPeers 피어 유지보수
 func (n *Node) maintainPeers() {
 	ticker := time.NewTicker(10 * time.Second)
+	peerExchangeTicker := time.NewTicker(30 * time.Second) // 30초마다 피어 교환
 	defer ticker.Stop()
+	defer peerExchangeTicker.Stop()
 
 	for {
 		select {
@@ -492,7 +506,23 @@ func (n *Node) maintainPeers() {
 			n.removeInactivePeers()
 			// 피어가 없으면 부트노드에 재연결 시도
 			n.reconnectIfNeeded()
+		case <-peerExchangeTicker.C:
+			// 주기적 피어 교환
+			n.exchangePeers()
 		}
+	}
+}
+
+// exchangePeers 주기적으로 피어 목록 교환
+func (n *Node) exchangePeers() {
+	peers := n.GetPeers()
+	if len(peers) == 0 {
+		return
+	}
+
+	// 콜백이 설정되어 있으면 호출
+	if n.OnPeerExchange != nil {
+		n.OnPeerExchange(peers)
 	}
 }
 

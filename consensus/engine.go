@@ -192,11 +192,14 @@ func (e *ConsensusEngine) runRound() {
 			e.broadcastProposal()
 		}
 	} else {
-		// 비제안자: Proposal 대기 - 타임아웃 타이머 시작
-		// 타임아웃 시 다음 라운드로 진행 (handleRoundTimeout에서 처리)
-		e.prevotes = NewVoteSet(nextBlockHeight, 0, VoteTypePrevote)
-		e.precommits = NewVoteSet(nextBlockHeight, 0, VoteTypePrecommit)
-		e.startRoundTimer()
+		// 비제안자: Proposal 대기
+		// 이미 해당 높이의 VoteSet이 있으면 유지 (투표 수집 중일 수 있음)
+		if e.prevotes == nil || e.prevotes.Height != nextBlockHeight {
+			e.prevotes = NewVoteSet(nextBlockHeight, 0, VoteTypePrevote)
+			e.precommits = NewVoteSet(nextBlockHeight, 0, VoteTypePrecommit)
+			e.startRoundTimer()
+		}
+		// 타임아웃 타이머는 이미 실행 중이면 그대로 유지
 	}
 }
 
@@ -355,32 +358,33 @@ func (e *ConsensusEngine) HandleProposal(height uint64, round uint32, blockHash 
 		return
 	}
 
-	// 뒤처진 노드인 경우: 컨센서스 높이를 동기화
-	// 예: 블록체인 높이가 2이고 Proposal height가 3인데 컨센서스 높이가 2인 경우
+	// 예상되는 다음 블록 높이
 	expectedNextHeight := currentHeight + 1
-	if height == expectedNextHeight && e.consensus.CurrentHeight != height {
-		logger.Info("[Consensus] Syncing consensus height from ", e.consensus.CurrentHeight, " to ", height)
-		e.consensus.mu.Lock()
-		e.consensus.CurrentHeight = height
-		e.consensus.CurrentRound = round
-		e.consensus.mu.Unlock()
-	}
 
-	// 높이/라운드 검증
-	if height != e.consensus.CurrentHeight || round != e.consensus.CurrentRound {
-		logger.Debug("[Consensus] Proposal height/round mismatch: expected ", e.consensus.CurrentHeight, "/", e.consensus.CurrentRound, ", got ", height, "/", round)
+	// 높이가 맞지 않으면 무시
+	if height != expectedNextHeight {
+		logger.Debug("[Consensus] Proposal height mismatch: expected ", expectedNextHeight, ", got ", height)
 		return
 	}
 
-	// 제안자 검증: 해당 높이/라운드의 정당한 제안자인지 확인
+	// 먼저 해당 라운드의 제안자가 유효한지 확인 (라운드 동기화 전에)
 	expectedProposer := e.consensus.Selector.SelectProposer(height, round)
 	if expectedProposer == nil {
 		logger.Error("[Consensus] No expected proposer for height ", height, " round ", round)
 		return
 	}
 	if block.Proposer != expectedProposer.Address {
-		logger.Error("[Consensus] Invalid proposer: expected ", utils.AddressToString(expectedProposer.Address), ", got ", utils.AddressToString(block.Proposer))
+		logger.Debug("[Consensus] Invalid proposer for round ", round, ": expected ", utils.AddressToString(expectedProposer.Address)[:16], ", got ", utils.AddressToString(block.Proposer)[:16])
 		return
+	}
+
+	// 유효한 Proposal이면 해당 높이/라운드로 동기화
+	if e.consensus.CurrentHeight != height || e.consensus.CurrentRound != round {
+		logger.Info("[Consensus] Syncing to height ", height, " round ", round, " (was ", e.consensus.CurrentHeight, "/", e.consensus.CurrentRound, ")")
+		e.consensus.mu.Lock()
+		e.consensus.CurrentHeight = height
+		e.consensus.CurrentRound = round
+		e.consensus.mu.Unlock()
 	}
 
 	// 블록 검증 (서명 포함)
@@ -409,7 +413,22 @@ func (e *ConsensusEngine) HandleVote(vote *Vote) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	if vote.Height != e.consensus.CurrentHeight || vote.Round != e.consensus.CurrentRound {
+	// 이미 커밋된 높이의 투표는 무시
+	currentHeight, _ := e.blockchain.GetLatestHeight()
+	if vote.Height <= currentHeight {
+		return
+	}
+
+	// 다음 블록 높이가 아니면 무시
+	expectedNextHeight := currentHeight + 1
+	if vote.Height != expectedNextHeight {
+		return
+	}
+
+	// 현재 라운드와 다르면 무시 (투표는 Proposal과 함께 동기화됨)
+	// 단, VoteSet이 있고 라운드가 맞으면 처리
+	if vote.Round != e.consensus.CurrentRound {
+		logger.Debug("[Consensus] Vote round mismatch: current ", e.consensus.CurrentRound, ", got ", vote.Round)
 		return
 	}
 

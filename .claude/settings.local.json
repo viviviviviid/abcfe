@@ -35,7 +35,9 @@
       "Bash(./test_transaction.sh:*)",
       "Bash(./clean_all.sh:*)",
       "Bash(tee:*)",
-      "Bash(go run:*)"
+      "Bash(go run:*)",
+      "Bash(jq:*)",
+      "Bash(./stop_all_nodes.sh:*)"
     ],
     "deny": [],
     "ask": []

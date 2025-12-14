@@ -46,7 +46,7 @@ ps aux | grep abcfed | grep -v grep | while read line; do
 done
 echo ""
 
-# 각 포트별로 노드 상태 확인
+# 각 포트별로 노드 상태 확인 및 peers 정보 추가
 for port in 8000 8001 8002 8003 8004 8005 8006 8007 8008 8009; do
     if curl -s http://localhost:${port}/api/v1/status > /dev/null 2>&1; then
         node_num=$((port - 7999))
@@ -54,11 +54,78 @@ for port in 8000 8001 8002 8003 8004 8005 8006 8007 8008 8009; do
         height=$(echo "$status" | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['currentHeight'])" 2>/dev/null || echo "N/A")
         hash=$(echo "$status" | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['currentBlockHash'][:16])" 2>/dev/null || echo "N/A")
         mempool=$(echo "$status" | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['mempoolSize'])" 2>/dev/null || echo "N/A")
-        
+
+        # peers 정보 (연결된 peer 수 및 peer 리스트)
+        peer_status=$(curl -s http://localhost:${port}/api/v1/p2p/status 2>/dev/null)
+        peer_count=$(echo "$peer_status" | python3 -c "import sys, json; print(json.load(sys.stdin).get('data', {}).get('peerCount', 'N/A'))" 2>/dev/null || echo "N/A")
+
         echo -e "${GREEN}Node ${node_num} (REST: ${port}):${NC}"
         echo "  Height: $height"
         echo "  Hash: ${hash}..."
         echo "  Mempool: $mempool transactions"
+        echo "  Peers: $peer_count"
+
+        # 상세 Peers 목록 출력
+        # 아래 API 중 하나만 동작할 수 있음. 우선적으로 /api/v1/p2p/peers 시도, 없으면 /api/v1/p2p/connection
+        # 일부 ABCFe 버전에서 /peers가 작동 안할 수도 있음
+        if [ "$peer_count" != "N/A" ] && [ "$peer_count" != "0" ]; then
+            peer_list=$(curl -s http://localhost:${port}/api/v1/p2p/peers 2>/dev/null)
+            if [ -n "$peer_list" ]; then
+                peer_ips=$(echo "$peer_list" | python3 -c "
+import sys, json
+try:
+    peers = json.load(sys.stdin).get('data', [])
+    if isinstance(peers, list) and peers:
+        for p in peers:
+            ip = p.get('IP') or p.get('ip') or p.get('addr') or 'unknown'
+            port = p.get('Port') or p.get('port') or 'unknown'
+            peerid = p.get('ID') or p.get('id') or ''
+            display = f\"    - {ip}:{port}\"
+            if peerid: display += f\" (ID: {peerid})\"
+            print(display)
+    elif isinstance(peers, dict): # 혹시 dict 타입이면 일괄 출력
+        for k, v in peers.items():
+            print(f\"    - {k}: {v}\")
+except Exception as e:
+    pass
+" 2>/dev/null)
+                if [ -n "$peer_ips" ]; then
+                    echo "  Peer List:"
+                    echo "$peer_ips"
+                fi
+            else
+                # 대체 API 시도(/api/v1/p2p/connection)
+                peer_conn=$(curl -s http://localhost:${port}/api/v1/p2p/connection 2>/dev/null)
+                if [ -n "$peer_conn" ]; then
+                    peer_ips=$(echo "$peer_conn" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin).get('data', [])
+    if isinstance(data, list) and data:
+        for p in data:
+            ip = p.get('IP') or p.get('ip') or p.get('addr') or 'unknown'
+            port = p.get('Port') or p.get('port') or 'unknown'
+            peerid = p.get('ID') or p.get('id') or ''
+            display = f\"    - {ip}:{port}\"
+            if peerid: display += f\" (ID: {peerid})\"
+            print(display)
+    elif isinstance(data, dict):
+        for k, v in data.items():
+            print(f\"    - {k}: {v}\")
+except Exception as e:
+    pass
+" 2>/dev/null)
+                    if [ -n "$peer_ips" ]; then
+                        echo "  Peer List (from connection):"
+                        echo "$peer_ips"
+                    else
+                        echo "  Peer 목록 정보를 가져올 수 없음 (peers/connection)"
+                    fi
+                else
+                    echo "  Peer 목록 정보를 가져올 수 없음 (peers/connection)"
+                fi
+            fi
+        fi
         echo ""
     fi
 done

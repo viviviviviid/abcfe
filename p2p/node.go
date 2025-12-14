@@ -379,8 +379,13 @@ func (n *Node) handleHandshake(msg *Message, peer *Peer) {
 		n.sendHandshakeAck(peer)
 	}
 
-	// 피어 등록
-	n.addPeer(peer)
+	// 피어 등록 (중복 연결 체크)
+	if !n.addPeer(peer) {
+		// 중복 연결로 인해 추가 거부됨 - 연결 닫기
+		logger.Info("[P2P] Duplicate peer rejected, closing connection: ", peer.ID[:16])
+		peer.Conn.Close()
+		return
+	}
 	logger.Info("[P2P] Peer activated: ", peer.ID, " (", peer.Address, ")")
 
 	// 피어 연결 완료 콜백 호출 (피어 디스커버리 트리거)
@@ -467,18 +472,55 @@ func (n *Node) Broadcast(msg *Message) {
 	}
 }
 
-// addPeer 피어 추가
-func (n *Node) addPeer(peer *Peer) {
+// addPeer 피어 추가 (중복 연결 방지)
+// 반환값: true=피어 추가됨, false=이미 존재하여 추가되지 않음
+func (n *Node) addPeer(peer *Peer) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
+	// 이미 같은 ID의 피어가 존재하는지 확인
+	if existingPeer, exists := n.Peers[peer.ID]; exists {
+		// 이미 존재하면 새 연결 거부 (기존 연결 유지)
+		// 어떤 연결을 유지할지 결정: 일관성을 위해 ID 비교 (낮은 ID가 outbound 역할)
+		if n.ID < peer.ID {
+			// 내 ID가 낮으면 내가 연결을 시도해야 함 (기존 inbound는 거부)
+			if peer.Inbound {
+				logger.Debug("[P2P] Rejecting duplicate inbound connection from ", peer.ID[:16], " (I should connect)")
+				return false
+			}
+		} else {
+			// 내 ID가 높으면 상대가 연결을 시도해야 함 (기존 outbound는 거부)
+			if !peer.Inbound {
+				logger.Debug("[P2P] Rejecting duplicate outbound connection to ", peer.ID[:16], " (peer should connect)")
+				return false
+			}
+		}
+		// 기존 연결을 새 연결로 교체
+		if existingPeer.Conn != nil {
+			existingPeer.Conn.Close()
+		}
+		logger.Debug("[P2P] Replacing existing connection to ", peer.ID[:16])
+	}
+
 	n.Peers[peer.ID] = peer
+	return true
 }
 
 // removePeer 피어 제거
+// 중요: 같은 ID로 새 연결이 교체된 경우, 기존 연결의 handlePeer가 종료될 때
+// 새 연결을 삭제하지 않도록 현재 등록된 연결과 비교
 func (n *Node) removePeer(peer *Peer) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+
+	// 현재 등록된 피어가 제거하려는 피어와 같은 연결인지 확인
+	if existingPeer, exists := n.Peers[peer.ID]; exists {
+		// 다른 연결(교체된 새 연결)이면 삭제하지 않음
+		if existingPeer.Conn != peer.Conn {
+			logger.Debug("[P2P] Skipping removal of replaced connection for peer ", peer.ID[:16])
+			return
+		}
+	}
 
 	delete(n.Peers, peer.ID)
 }

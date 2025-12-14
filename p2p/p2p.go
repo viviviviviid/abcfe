@@ -36,6 +36,10 @@ type P2PService struct {
 	seenVotes       map[string]time.Time // key: "height:round:voteType:voter"
 	seenVotesMu     sync.RWMutex
 
+	// 연결 시도 중인 피어 ID 추적 (중복 연결 방지)
+	connectingPeers   map[string]time.Time
+	connectingPeersMu sync.Mutex
+
 	running bool
 }
 
@@ -47,12 +51,13 @@ func NewP2PService(address string, port int, networkID string, blockchain *core.
 	}
 
 	service := &P2PService{
-		Node:          node,
-		Blockchain:    blockchain,
-		seenMessages:  make(map[string]time.Time),
-		seenProposals: make(map[string]time.Time),
-		seenVotes:     make(map[string]time.Time),
-		running:       false,
+		Node:            node,
+		Blockchain:      blockchain,
+		seenMessages:    make(map[string]time.Time),
+		seenProposals:   make(map[string]time.Time),
+		seenVotes:       make(map[string]time.Time),
+		connectingPeers: make(map[string]time.Time),
+		running:         false,
 	}
 
 	// 노드에도 블록체인 참조 설정 (핸드셰이크용)
@@ -486,9 +491,15 @@ func (s *P2PService) handlePeers(msg *Message, peer *Peer) {
 			continue
 		}
 
+		// 이미 연결 시도 중인 피어인지 확인 (중복 연결 방지)
+		if !s.tryMarkConnecting(peerInfo.ID) {
+			continue
+		}
+
 		// 연결 시도 (비동기)
 		address := fmt.Sprintf("%s:%d", peerInfo.Address, peerInfo.Port)
 		go func(addr string, id string) {
+			defer s.unmarkConnecting(id)
 			if err := s.Node.Connect(addr); err != nil {
 				logger.Debug("[P2P] Failed to connect to discovered peer ", addr, ": ", err)
 			} else {
@@ -496,6 +507,35 @@ func (s *P2PService) handlePeers(msg *Message, peer *Peer) {
 			}
 		}(address, peerInfo.ID)
 	}
+}
+
+// tryMarkConnecting 연결 시도 중으로 표시 (이미 시도 중이면 false 반환)
+func (s *P2PService) tryMarkConnecting(peerID string) bool {
+	s.connectingPeersMu.Lock()
+	defer s.connectingPeersMu.Unlock()
+
+	// 30초 이상 지난 항목은 정리
+	threshold := time.Now().Add(-30 * time.Second)
+	for id, t := range s.connectingPeers {
+		if t.Before(threshold) {
+			delete(s.connectingPeers, id)
+		}
+	}
+
+	// 이미 연결 시도 중인지 확인
+	if _, exists := s.connectingPeers[peerID]; exists {
+		return false
+	}
+
+	s.connectingPeers[peerID] = time.Now()
+	return true
+}
+
+// unmarkConnecting 연결 시도 완료 표시
+func (s *P2PService) unmarkConnecting(peerID string) {
+	s.connectingPeersMu.Lock()
+	defer s.connectingPeersMu.Unlock()
+	delete(s.connectingPeers, peerID)
 }
 
 // isConnectedToPeer 특정 피어에 이미 연결되어 있는지 확인

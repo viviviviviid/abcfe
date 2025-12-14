@@ -12,6 +12,7 @@ import (
 	"github.com/abcfe/abcfe-node/api/rest"
 	"github.com/abcfe/abcfe-node/common/crypto"
 	"github.com/abcfe/abcfe-node/common/logger"
+	"github.com/abcfe/abcfe-node/common/utils"
 	conf "github.com/abcfe/abcfe-node/config"
 	"github.com/abcfe/abcfe-node/consensus"
 	"github.com/abcfe/abcfe-node/core"
@@ -155,6 +156,35 @@ func New(configPath string) (*App, error) {
 			Signature: signature,
 		}
 		app.ConsensusEngine.HandleVote(vote)
+	})
+
+	// P2P에서 트랜잭션 수신 시 Mempool에 추가 및 전파
+	app.P2PService.SetTxHandler(func(tx *core.Transaction) {
+		// 트랜잭션 ID 문자열
+		txID := utils.HashToString(tx.ID)
+
+		// 1. 유효성 검증
+		if err := app.BlockChain.ValidateTransaction(tx); err != nil {
+			logger.Debug("[TxHandler] Invalid tx received: ", txID[:16], " error: ", err)
+			return
+		}
+
+		// 2. 멤풀에 추가
+		// 이미 존재하면 에러를 반환하므로 중복 전파 방지 효과
+		if err := app.BlockChain.Mempool.NewTranaction(tx); err != nil {
+			// 이미 존재하거나 에러가 나면 전파하지 않음
+			return
+		}
+
+		logger.Debug("[TxHandler] Added tx to mempool: ", txID[:16])
+
+		// 3. 다른 피어들에게 재브로드캐스트 (Gossip)
+		// 내가 처음 받은 유효한 트랜잭션이라면 다른 피어들에게도 알려줌
+		if app.P2PService != nil {
+			if err := app.P2PService.BroadcastTx(tx); err != nil {
+				logger.Debug("[TxHandler] Failed to rebroadcast tx: ", err)
+			}
+		}
 	})
 
 	// 누락된 블록 저장용 맵 (높이 -> 블록)
@@ -344,7 +374,7 @@ func (p *App) StartAll() error {
 	if connectedPeers > 0 {
 		// 피어가 완전히 연결될 때까지 잠시 대기
 		time.Sleep(1 * time.Second)
-		
+
 		// 초기 블록 동기화 시도
 		go func() {
 			logger.Info("[Sync] Starting initial block synchronization...")
@@ -354,7 +384,7 @@ func (p *App) StartAll() error {
 				logger.Info("[Sync] Initial synchronization completed")
 			}
 		}()
-		
+
 		// 주기적 동기화 시작 (모든 노드에서 - BFT 참여를 위해 동기화 필요)
 		go p.startPeriodicSync()
 	}

@@ -188,7 +188,7 @@ func (p *BlockChain) AddBlock(blk Block) (bool, error) {
 
 	// mempool update
 	for _, tx := range blk.Transactions {
-		delete(p.Mempool.transactions, utils.HashToString(tx.ID))
+		p.Mempool.DelTx(tx.ID)
 	}
 
 	// chain status update

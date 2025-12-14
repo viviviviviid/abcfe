@@ -62,13 +62,24 @@ func (p *BlockChain) SetTransferTx(from prt.Address, to prt.Address, amount uint
 		return &Transaction{}, err
 	}
 
+	// GOB 역직렬화 후 nil이 빈 슬라이스로 바뀌는 문제 해결
+	// 트랜잭션 생성 시 nil을 빈 슬라이스로 정규화하여 해시 일관성 유지
+	normalizedData := data
+	if normalizedData == nil {
+		normalizedData = []byte{}
+	}
+	normalizedInputs := txInAndOut.TxIns
+	if normalizedInputs == nil {
+		normalizedInputs = []*TxInput{}
+	}
+
 	tx := Transaction{
 		Version:   p.cfg.Version.Transaction,
 		Timestamp: time.Now().Unix(),
-		Inputs:    txInAndOut.TxIns,
+		Inputs:    normalizedInputs,
 		Outputs:   txInAndOut.TxOuts,
 		Memo:      memo,
-		Data:      data,
+		Data:      normalizedData,
 	}
 
 	txHash := utils.Hash(tx)
@@ -118,11 +129,18 @@ func (p *BlockChain) setTxIOPair(utxos []*UTXO, from prt.Address, to prt.Address
 }
 
 func (p *BlockChain) setTxInput(txOutID prt.Hash, txOutIdx uint64, sig prt.Signature, pubKey []byte) *TxInput {
+	// GOB 역직렬화 후 nil이 빈 슬라이스로 바뀌는 문제 해결
+	// nil을 빈 슬라이스로 정규화하여 해시 일관성 유지
+	normalizedPubKey := pubKey
+	if normalizedPubKey == nil {
+		normalizedPubKey = []byte{}
+	}
+
 	txIn := &TxInput{
 		TxID:        txOutID,
 		OutputIndex: txOutIdx,
 		Signature:   sig,
-		PublicKey:   pubKey,
+		PublicKey:   normalizedPubKey,
 	}
 
 	return txIn
@@ -337,6 +355,13 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 	var txIns []*TxInput
 	var total uint64
 
+	// GOB 역직렬화 후 nil이 빈 슬라이스로 바뀌는 문제 해결
+	// nil을 빈 슬라이스로 정규화하여 해시 일관성 유지
+	normalizedPublicKey := publicKeyBytes
+	if normalizedPublicKey == nil {
+		normalizedPublicKey = []byte{}
+	}
+
 	for _, utxo := range utxos {
 		// 수수료 포함한 금액을 충족하면 중단
 		if total >= requiredAmount {
@@ -345,7 +370,7 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 		txIn := &TxInput{
 			TxID:        utxo.TxId,
 			OutputIndex: utxo.OutputIndex,
-			PublicKey:   publicKeyBytes,
+			PublicKey:   normalizedPublicKey,
 			// Signature는 나중에 설정
 		}
 		txIns = append(txIns, txIn)
@@ -373,14 +398,25 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 		})
 	}
 
+	// GOB 역직렬화 후 nil이 빈 슬라이스로 바뀌는 문제 해결
+	// 트랜잭션 생성 시 nil을 빈 슬라이스로 정규화하여 해시 일관성 유지
+	normalizedData := data
+	if normalizedData == nil {
+		normalizedData = []byte{}
+	}
+	normalizedInputs := txIns
+	if normalizedInputs == nil {
+		normalizedInputs = []*TxInput{}
+	}
+
 	// 트랜잭션 생성
 	tx := &Transaction{
 		Version:   p.cfg.Version.Transaction,
 		Timestamp: time.Now().Unix(),
-		Inputs:    txIns,
+		Inputs:    normalizedInputs,
 		Outputs:   txOuts,
 		Memo:      memo,
-		Data:      data,
+		Data:      normalizedData,
 	}
 
 	// TX ID 계산 (서명 전에 계산)

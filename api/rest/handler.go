@@ -419,7 +419,7 @@ func formatTxsResp(txs []*core.Transaction) []interface{} {
 }
 
 // SubmitSignedTx 클라이언트가 서명한 트랜잭션 제출
-func SubmitSignedTx(bc *core.BlockChain) http.HandlerFunc {
+func SubmitSignedTx(bc *core.BlockChain, p2pService *p2p.P2PService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req SubmitSignedTxReq
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -446,6 +446,16 @@ func SubmitSignedTx(bc *core.BlockChain) http.HandlerFunc {
 			return
 		}
 
+		// P2P 네트워크에 브로드캐스트
+		if p2pService != nil {
+			if err := p2pService.BroadcastTx(tx); err != nil {
+				// 브로드캐스트 실패해도 로컬 멤풀에는 들어갔으므로 성공 처리하되 로그 남김
+				fmt.Printf("[API] Failed to broadcast tx: %v\n", err)
+			} else {
+				fmt.Printf("[API] Broadcasted tx: %s\n", utils.HashToString(tx.ID))
+			}
+		}
+
 		sendResp(w, http.StatusOK, map[string]string{
 			"txId": utils.HashToString(tx.ID),
 		}, nil)
@@ -453,7 +463,7 @@ func SubmitSignedTx(bc *core.BlockChain) http.HandlerFunc {
 }
 
 // SendTxWithWallet 서버 지갑을 사용하여 서명 후 전송
-func SendTxWithWallet(bc *core.BlockChain, wm *wallet.WalletManager) http.HandlerFunc {
+func SendTxWithWallet(bc *core.BlockChain, wm *wallet.WalletManager, p2pService *p2p.P2PService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req SendTxReq
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -499,6 +509,16 @@ func SendTxWithWallet(bc *core.BlockChain, wm *wallet.WalletManager) http.Handle
 		if err := bc.Mempool.NewTranaction(tx); err != nil {
 			sendResp(w, http.StatusInternalServerError, nil, err)
 			return
+		}
+
+		// P2P 네트워크에 브로드캐스트
+		if p2pService != nil {
+			if err := p2pService.BroadcastTx(tx); err != nil {
+				// 브로드캐스트 실패해도 로컬 멤풀에는 들어갔으므로 성공 처리하되 로그 남김
+				fmt.Printf("[API] Failed to broadcast tx: %v\n", err)
+			} else {
+				fmt.Printf("[API] Broadcasted tx: %s\n", utils.HashToString(tx.ID))
+			}
 		}
 
 		sendResp(w, http.StatusOK, map[string]string{

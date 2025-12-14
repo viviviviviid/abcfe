@@ -45,16 +45,19 @@ type TxIOPair struct {
 	TxOuts []*TxOutput `json:"txOuts"`
 }
 
-func (p *BlockChain) SetTransferTx(from prt.Address, to prt.Address, amount uint64, memo string, data []byte, txType uint8) (*Transaction, error) {
+func (p *BlockChain) SetTransferTx(from prt.Address, to prt.Address, amount uint64, fee uint64, memo string, data []byte, txType uint8) (*Transaction, error) {
 	utxos, err := p.GetUtxoList(from, true)
 	if err != nil {
 		return nil, err
 	}
-	if p.CalBalanceUtxo(utxos) < amount {
-		return &Transaction{}, fmt.Errorf("not enough balance")
+
+	// 수수료 포함한 총 필요 금액 검증
+	requiredAmount := amount + fee
+	if p.CalBalanceUtxo(utxos) < requiredAmount {
+		return &Transaction{}, fmt.Errorf("not enough balance: need %d (amount) + %d (fee) = %d", amount, fee, requiredAmount)
 	}
 
-	txInAndOut, err := p.setTxIOPair(utxos, from, to, amount, txType)
+	txInAndOut, err := p.setTxIOPair(utxos, from, to, amount, fee, txType)
 	if err != nil {
 		return &Transaction{}, err
 	}
@@ -74,15 +77,18 @@ func (p *BlockChain) SetTransferTx(from prt.Address, to prt.Address, amount uint
 	return &tx, nil
 }
 
-// tx input과 output을 구성
-func (p *BlockChain) setTxIOPair(utxos []*UTXO, from prt.Address, to prt.Address, amount uint64, txType uint8) (*TxIOPair, error) {
+// tx input과 output을 구성 (fee 포함)
+func (p *BlockChain) setTxIOPair(utxos []*UTXO, from prt.Address, to prt.Address, amount uint64, fee uint64, txType uint8) (*TxIOPair, error) {
 	var txInAndOut TxIOPair
 	var total uint64
 
+	// 수수료 포함한 총 필요 금액
+	requiredAmount := amount + fee
+
 	// set tx in
 	for _, utxo := range utxos {
-		// ! 이 부분 등호 이해 안됨
-		if total >= amount {
+		// 수수료 포함한 금액을 충족하면 중단
+		if total >= requiredAmount {
 			break
 		}
 		// ! pubkey는 전처리 시그니처 후처리 필요
@@ -93,17 +99,17 @@ func (p *BlockChain) setTxIOPair(utxos []*UTXO, from prt.Address, to prt.Address
 	}
 
 	// utxo 탈탈 털었는데도 돈이 부족하다면 에러
-	if total < amount {
-		return nil, fmt.Errorf("Not enough balance: required %d, balance %d", amount, total)
+	if total < requiredAmount {
+		return nil, fmt.Errorf("not enough balance: required %d (amount %d + fee %d), have %d", requiredAmount, amount, fee, total)
 	}
 
-	// set tx out
+	// set tx out - 수신자에게 보내는 금액
 	txOut := p.setTxOutput(to, amount, txType)
 	txInAndOut.TxOuts = append(txInAndOut.TxOuts, txOut)
 
-	// 거슬러줘야한다면 잔액 반환
-	if total > amount {
-		changeOut := total - amount
+	// 거슬러줘야한다면 잔액 반환 (수수료는 Output에 포함되지 않음 = 암묵적 수수료)
+	if total > requiredAmount {
+		changeOut := total - requiredAmount // total - amount - fee
 		txOut := p.setTxOutput(from, changeOut, txType)
 		txInAndOut.TxOuts = append(txInAndOut.TxOuts, txOut)
 	}
@@ -250,20 +256,21 @@ func (p *BlockChain) GetOutputTxByIdx(txId prt.Hash, idx int) (*TxOutput, error)
 	return &txOutput, nil
 }
 
-func (p *BlockChain) SubmitTx(from, to prt.Address, amount uint64, memo string, data []byte, txType uint8) error {
+func (p *BlockChain) SubmitTx(from, to prt.Address, amount uint64, fee uint64, memo string, data []byte, txType uint8) error {
 	utxoList, err := p.GetUtxoList(from, true)
 	if err != nil {
 		return fmt.Errorf("failed to get balance: %w", err)
 	}
 
-	// utxo 기반으로 밸런스 체크
+	// utxo 기반으로 밸런스 체크 (수수료 포함)
+	requiredAmount := amount + fee
 	balance := p.CalBalanceUtxo(utxoList)
-	if balance < amount {
-		return fmt.Errorf("not enough balance. you have just %d", balance)
+	if balance < requiredAmount {
+		return fmt.Errorf("not enough balance: need %d (amount %d + fee %d), have %d", requiredAmount, amount, fee, balance)
 	}
 
-	// set transaction
-	tx, err := p.SetTransferTx(from, to, amount, memo, data, txType)
+	// set transaction (수수료 포함)
+	tx, err := p.SetTransferTx(from, to, amount, fee, memo, data, txType)
 	if err != nil {
 		return fmt.Errorf("failed to set transaction: %w", err)
 	}
@@ -281,10 +288,11 @@ func calculateMerkleRoot(txs []*Transaction) prt.Hash {
 		return prt.Hash{} // 빈 해시 반환
 	}
 
-	// 각 트랜잭션을 해시
+	// 각 트랜잭션의 ID(해시)를 사용
+	// TX.ID는 이미 트랜잭션의 해시이므로 직접 사용
 	hashes := make([]prt.Hash, len(txs))
 	for i, tx := range txs {
-		hashes[i] = utils.Hash(tx)
+		hashes[i] = tx.ID
 	}
 
 	// 머클 트리 계산 // 재귀 호출
@@ -311,16 +319,18 @@ func buildMerkleTree(hashes []prt.Hash) prt.Hash {
 	return buildMerkleTree(nextLevel)
 }
 
-// CreateSignedTx 서명된 트랜잭션 생성
-func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, memo string, data []byte, txType uint8, privateKeyBytes, publicKeyBytes []byte) (*Transaction, error) {
+// CreateSignedTx 서명된 트랜잭션 생성 (fee 포함)
+func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uint64, memo string, data []byte, txType uint8, privateKeyBytes, publicKeyBytes []byte) (*Transaction, error) {
 	utxos, err := p.GetUtxoList(from, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get UTXO list: %w", err)
 	}
 
+	// 수수료 포함한 총 필요 금액
+	requiredAmount := amount + fee
 	balance := p.CalBalanceUtxo(utxos)
-	if balance < amount {
-		return nil, fmt.Errorf("not enough balance: have %d, need %d", balance, amount)
+	if balance < requiredAmount {
+		return nil, fmt.Errorf("not enough balance: have %d, need %d (amount %d + fee %d)", balance, requiredAmount, amount, fee)
 	}
 
 	// TX Input/Output 구성
@@ -328,7 +338,8 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, memo st
 	var total uint64
 
 	for _, utxo := range utxos {
-		if total >= amount {
+		// 수수료 포함한 금액을 충족하면 중단
+		if total >= requiredAmount {
 			break
 		}
 		txIn := &TxInput{
@@ -341,11 +352,11 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, memo st
 		total += utxo.TxOut.Amount
 	}
 
-	if total < amount {
-		return nil, fmt.Errorf("not enough balance after collecting UTXOs")
+	if total < requiredAmount {
+		return nil, fmt.Errorf("not enough balance after collecting UTXOs: have %d, need %d", total, requiredAmount)
 	}
 
-	// TX Output 구성
+	// TX Output 구성 - 수신자에게 보내는 금액
 	var txOuts []*TxOutput
 	txOuts = append(txOuts, &TxOutput{
 		Address: to,
@@ -353,11 +364,11 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, memo st
 		TxType:  txType,
 	})
 
-	// 거스름돈
-	if total > amount {
+	// 거스름돈 (수수료는 Output에 포함되지 않음 = 암묵적 수수료)
+	if total > requiredAmount {
 		txOuts = append(txOuts, &TxOutput{
 			Address: from,
-			Amount:  total - amount,
+			Amount:  total - requiredAmount, // total - amount - fee
 			TxType:  txType,
 		})
 	}

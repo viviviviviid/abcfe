@@ -24,6 +24,9 @@ NODE_COUNT=${1:-3}
 FORCE_CLEAN=false
 KEEP_DB=false
 
+# 제네시스 타임스탬프 (스크립트 실행 시점 - 모든 노드가 동일한 제네시스 블록을 갖도록)
+GENESIS_TIMESTAMP=$(date +%s)
+
 # 옵션 파싱
 shift || true
 while [[ $# -gt 0 ]]; do
@@ -199,7 +202,7 @@ GENESIS_ADDR="${VALIDATOR_ADDRS[0]}"
 # Node 1 설정 (Boot + BlockProducer)
 cat > "config/config_poa_node1.toml" <<EOF
 [common]
-level = "local"
+level = "alpha"
 serviceName = "abcfe-poa-node-1"
 port = 10000
 mode = "boot"
@@ -228,6 +231,7 @@ transaction = "1.0.0"
 [genesis]
 SystemAddresses = ["${GENESIS_ADDR}"]
 SystemBalances = [500000000]
+Timestamp = ${GENESIS_TIMESTAMP}
 
 [server]
 RestPort = 8000
@@ -236,6 +240,10 @@ RestPort = 8000
 Address = "0.0.0.0"
 Port = 30303
 BootNodes = []
+
+[fee]
+minFee = 1
+blockReward = 50
 ${VALIDATORS_TOML}
 EOF
 echo "  ✓ config/config_poa_node1.toml (Boot)"
@@ -247,7 +255,7 @@ for i in $(seq 2 $NODE_COUNT); do
 
     cat > "config/config_poa_node${i}.toml" <<EOF
 [common]
-level = "local"
+level = "alpha"
 serviceName = "abcfe-poa-node-${i}"
 port = $((10000 + i - 1))
 mode = "validator"
@@ -276,6 +284,7 @@ transaction = "1.0.0"
 [genesis]
 SystemAddresses = ["${GENESIS_ADDR}"]
 SystemBalances = [500000000]
+Timestamp = ${GENESIS_TIMESTAMP}
 
 [server]
 RestPort = ${REST_PORT}
@@ -284,6 +293,10 @@ RestPort = ${REST_PORT}
 Address = "0.0.0.0"
 Port = ${P2P_PORT}
 BootNodes = ["127.0.0.1:30303"]
+
+[fee]
+minFee = 1
+blockReward = 50
 ${VALIDATORS_TOML}
 EOF
     echo "  ✓ config/config_poa_node${i}.toml (Validator)"
@@ -302,7 +315,7 @@ if [ "$KEEP_DB" = false ]; then
     # 임시 설정 (blockProducer=false)
     cat > "config/config_poa_genesis.toml" <<EOFGEN
 [common]
-level = "local"
+level = "alpha"
 serviceName = "abcfe-poa-genesis"
 port = 10000
 mode = "boot"
@@ -331,6 +344,7 @@ transaction = "1.0.0"
 [genesis]
 SystemAddresses = ["${GENESIS_ADDR}"]
 SystemBalances = [500000000]
+Timestamp = ${GENESIS_TIMESTAMP}
 
 [server]
 RestPort = 8000
@@ -339,6 +353,10 @@ RestPort = 8000
 Address = "0.0.0.0"
 Port = 30303
 BootNodes = []
+
+[fee]
+minFee = 1
+blockReward = 50
 ${VALIDATORS_TOML}
 EOFGEN
 

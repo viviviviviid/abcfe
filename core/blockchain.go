@@ -178,3 +178,13 @@ func (p *BlockChain) SetProposerValidator(validator ProposerValidator) {
 func (p *BlockChain) GetProposerValidator() ProposerValidator {
 	return p.proposerValidator
 }
+
+// GetMinFee 최소 수수료 반환
+func (p *BlockChain) GetMinFee() uint64 {
+	return p.cfg.Fee.MinFee
+}
+
+// GetBlockReward 블록 보상 반환
+func (p *BlockChain) GetBlockReward() uint64 {
+	return p.cfg.Fee.BlockReward
+}

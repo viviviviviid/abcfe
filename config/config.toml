@@ -36,3 +36,7 @@ RestPort = 8000
 Address = "0.0.0.0"
 Port = 30303
 BootNodes = []
+
+[fee]
+minFee = 1000           # 최소 수수료 (1000 단위)
+blockReward = 50000000  # 블록 생성 보상 (50 토큰)

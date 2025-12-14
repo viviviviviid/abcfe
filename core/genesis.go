@@ -18,8 +18,11 @@ func (p *BlockChain) SetGenesisBlock() (*Block, error) {
 		defaultPrevHash[i] = 0x00
 	}
 
-	// 제네시스 블록 생성 시점의 타임스탬프 사용
-	genesisTimestamp := time.Now().Unix()
+	// config에서 타임스탬프 가져오기 (0이면 현재 시간 사용)
+	genesisTimestamp := p.cfg.Genesis.Timestamp
+	if genesisTimestamp == 0 {
+		genesisTimestamp = time.Now().Unix()
+	}
 
 	txs, err := p.setGenesisTxs(genesisTimestamp)
 	if err != nil {

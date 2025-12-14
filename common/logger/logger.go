@@ -28,6 +28,22 @@ func InitLogger(cfg *conf.Config) error {
 	lPath := fmt.Sprintf("%s_%s.log", cfg.LogInfo.Path, now.Format("2006-01-02"))
 	cf = cfg
 
+	// -debug 플래그 확인
+	hasDebugFlag := false
+	for _, arg := range os.Args {
+		if arg == "-debug" || arg == "--debug" {
+			hasDebugFlag = true
+			break
+		}
+	}
+
+	// -debug 플래그가 있으면 "alpha", 없으면 "prod" (default)
+	if hasDebugFlag {
+		cfg.Common.Level = "alpha"
+	} else {
+		cfg.Common.Level = "prod"
+	}
+
 	rotator, err := rotatelogs.New(
 		lPath,
 		rotatelogs.WithMaxAge(time.Duration(cfg.LogInfo.MaxAgeHour)*time.Hour),

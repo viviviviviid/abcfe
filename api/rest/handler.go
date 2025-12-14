@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/abcfe/abcfe-node/api"
 	"github.com/abcfe/abcfe-node/common/utils"
@@ -214,7 +215,7 @@ func GetBalanceByUtxo(bc *core.BlockChain) http.HandlerFunc {
 
 func SubmitTransferTx(bc *core.BlockChain) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		var req SubmitTxReq // mock data
+		var req SubmitTxReq
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			sendResp(w, http.StatusBadRequest, nil, err)
 			return
@@ -232,9 +233,15 @@ func SubmitTransferTx(bc *core.BlockChain) http.HandlerFunc {
 			return
 		}
 
+		// 수수료가 0이면 최소 수수료 적용
+		fee := req.Fee
+		if fee == 0 {
+			fee = bc.GetMinFee()
+		}
+
 		txType := core.TxTypeGeneral // 일반 트랜잭션
 
-		if err := bc.SubmitTx(from, to, req.Amount, req.Memo, req.Data, txType); err != nil {
+		if err := bc.SubmitTx(from, to, req.Amount, fee, req.Memo, req.Data, txType); err != nil {
 			sendResp(w, http.StatusInternalServerError, nil, err)
 			return
 		}
@@ -256,7 +263,8 @@ func ComposeAndAddBlock(bc *core.BlockChain) http.HandlerFunc {
 		// 블록 구성 (API에서 직접 블록을 생성하는 경우는 테스트용으로, 빈 제안자 사용)
 		// 실제 운영에서는 컨센서스 엔진을 통해 블록이 생성되어야 함
 		var emptyProposer [20]byte
-		blk := bc.SetBlock(prevHash, curHeight, emptyProposer)
+		blockTimestamp := time.Now().Unix()
+		blk := bc.SetBlock(prevHash, curHeight, emptyProposer, blockTimestamp)
 
 		// 블록 추가
 		result, err := bc.AddBlock(*blk)
@@ -334,7 +342,7 @@ func formatBlockResp(block *core.Block) (BlockResp, error) {
 	return response, nil
 }
 
-// get tx response
+// get tx response (fee는 클라이언트에서 계산하거나 블록체인 조회 필요)
 func formatTxResp(tx *core.Transaction) TxResp {
 	return TxResp{
 		ID:        utils.HashToString(tx.ID),
@@ -343,6 +351,21 @@ func formatTxResp(tx *core.Transaction) TxResp {
 		Inputs:    formatTxInputsResp(tx.Inputs),
 		Outputs:   formatTxOutputsResp(tx.Outputs),
 		Memo:      tx.Memo,
+		Fee:       0, // 기본값 (Coinbase TX 또는 계산 불가 시)
+	}
+}
+
+// formatTxRespWithFee 수수료 정보를 포함한 트랜잭션 응답
+func formatTxRespWithFee(tx *core.Transaction, bc *core.BlockChain) TxResp {
+	fee, _ := bc.CalculateTxFee(tx)
+	return TxResp{
+		ID:        utils.HashToString(tx.ID),
+		Version:   tx.Version,
+		Timestamp: tx.Timestamp,
+		Inputs:    formatTxInputsResp(tx.Inputs),
+		Outputs:   formatTxOutputsResp(tx.Outputs),
+		Memo:      tx.Memo,
+		Fee:       fee,
 	}
 }
 
@@ -459,8 +482,14 @@ func SendTxWithWallet(bc *core.BlockChain, wm *wallet.WalletManager) http.Handle
 			return
 		}
 
-		// 서명된 트랜잭션 생성
-		tx, err := bc.CreateSignedTx(from, to, req.Amount, req.Memo, req.Data, core.TxTypeGeneral, account.PrivateKey, account.PublicKey)
+		// 수수료가 0이면 최소 수수료 적용
+		fee := req.Fee
+		if fee == 0 {
+			fee = bc.GetMinFee()
+		}
+
+		// 서명된 트랜잭션 생성 (수수료 포함)
+		tx, err := bc.CreateSignedTx(from, to, req.Amount, fee, req.Memo, req.Data, core.TxTypeGeneral, account.PrivateKey, account.PublicKey)
 		if err != nil {
 			sendResp(w, http.StatusInternalServerError, nil, fmt.Errorf("failed to create signed tx: %w", err))
 			return

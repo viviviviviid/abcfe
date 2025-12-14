@@ -255,9 +255,9 @@ func (p *BlockChain) ValidateTransaction(tx *Transaction) error {
 		return err
 	}
 
-	// 제네시스 트랜잭션은 input이 없음
+	// Coinbase 트랜잭션 (input이 없음) - 별도 검증
 	if len(tx.Inputs) == 0 {
-		return nil
+		return p.ValidateCoinbaseTx(tx)
 	}
 
 	// Input/Output 밸런스 검증
@@ -293,6 +293,13 @@ func (p *BlockChain) ValidateTransaction(tx *Transaction) error {
 		return fmt.Errorf("insufficient input: input=%d, output=%d", inputSum, outputSum)
 	}
 
+	// 암묵적 수수료 계산 및 최소 수수료 검증
+	implicitFee := inputSum - outputSum
+	minFee := p.GetMinFee()
+	if implicitFee < minFee {
+		return fmt.Errorf("fee too low: got %d, minimum required %d", implicitFee, minFee)
+	}
+
 	// 서명 검증
 	if err := p.ValidateAllTxSignatures(tx); err != nil {
 		return fmt.Errorf("signature validation failed: %w", err)
@@ -301,11 +308,75 @@ func (p *BlockChain) ValidateTransaction(tx *Transaction) error {
 	return nil
 }
 
+// ValidateCoinbaseTx Coinbase 트랜잭션 검증
+func (p *BlockChain) ValidateCoinbaseTx(tx *Transaction) error {
+	// Coinbase TX는 Input이 없어야 함
+	if len(tx.Inputs) != 0 {
+		return fmt.Errorf("coinbase tx must have no inputs")
+	}
+
+	// Output이 최소 1개 이상 있어야 함
+	if len(tx.Outputs) == 0 {
+		return fmt.Errorf("coinbase tx must have at least one output")
+	}
+
+	// Output 금액 합계가 양수여야 함
+	var totalOutput uint64
+	for _, output := range tx.Outputs {
+		totalOutput += output.Amount
+	}
+
+	if totalOutput == 0 {
+		return fmt.Errorf("coinbase tx output amount must be positive")
+	}
+
+	return nil
+}
+
+// CalculateTxFee 트랜잭션의 암묵적 수수료 계산
+func (p *BlockChain) CalculateTxFee(tx *Transaction) (uint64, error) {
+	// Coinbase TX는 수수료 없음
+	if len(tx.Inputs) == 0 {
+		return 0, nil
+	}
+
+	var inputSum, outputSum uint64
+
+	for _, input := range tx.Inputs {
+		utxo, err := p.GetUtxoByTxIdAndIdx(input.TxID, input.OutputIndex)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get UTXO: %w", err)
+		}
+		inputSum += utxo.TxOut.Amount
+	}
+
+	for _, output := range tx.Outputs {
+		outputSum += output.Amount
+	}
+
+	if inputSum < outputSum {
+		return 0, fmt.Errorf("invalid tx: inputSum < outputSum")
+	}
+
+	return inputSum - outputSum, nil
+}
+
 // ValidateTxHash 트랜잭션 해시 검증
 // TX ID는 서명 전에 계산되므로, 검증 시에도 서명을 제외하고 해시를 계산해야 함
 func ValidateTxHash(tx *Transaction) error {
 	storedHash := tx.ID
 	tx.ID = prt.Hash{}
+
+	// GOB 역직렬화 후 빈 슬라이스가 nil로 바뀌는 문제 해결
+	// TX 생성 시 빈 슬라이스를 사용했으므로, 검증 시에도 nil을 빈 슬라이스로 정규화
+	savedData := tx.Data
+	savedInputs := tx.Inputs
+	if tx.Data == nil {
+		tx.Data = []byte{}
+	}
+	if tx.Inputs == nil {
+		tx.Inputs = []*TxInput{}
+	}
 
 	// 서명을 임시로 백업하고 제거 (TX ID는 서명 전에 계산됨)
 	savedSignatures := make([]prt.Signature, len(tx.Inputs))
@@ -316,11 +387,13 @@ func ValidateTxHash(tx *Transaction) error {
 
 	calculatedHash := utils.Hash(tx)
 
-	// 서명 복원
+	// 서명 및 데이터 복원
 	for i, input := range tx.Inputs {
 		input.Signature = savedSignatures[i]
 	}
 	tx.ID = storedHash
+	tx.Data = savedData
+	tx.Inputs = savedInputs
 
 	if storedHash != calculatedHash {
 		return fmt.Errorf("tx hash mismatch: expected %s, got %s",

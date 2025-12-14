@@ -24,6 +24,8 @@ API_BASE="http://localhost:8000/api/v1"
 
 # 금액 정의
 AMOUNT_TO_USER1=1000
+MIN_FEE=1  # 최소 수수료 (config.toml [fee] minFee와 일치)
+BLOCK_REWARD=50  # 블록 보상 (config.toml [fee] blockReward와 일치)
 
 echo -e "${BLUE}=============================================${NC}"
 echo -e "${BLUE}   ABCFe 트랜잭션 테스트 시작${NC}"
@@ -96,17 +98,20 @@ fi
 # =============================================================================
 # Step 1: 송신자 -> User1 트랜잭션 (서명된 트랜잭션)
 # =============================================================================
-echo -e "${BLUE}[Step 1] 송신자 -> User1 트랜잭션 (${AMOUNT_TO_USER1} 코인)${NC}"
+echo -e "${BLUE}[Step 1] 송신자 -> User1 트랜잭션 (${AMOUNT_TO_USER1} 코인 + 수수료 ${MIN_FEE})${NC}"
 echo "----------------------------------------"
 
 echo -e "트랜잭션 전송 중 (/tx/send - 서버 지갑 서명)..."
+echo -e "  금액: ${AMOUNT_TO_USER1} 코인"
+echo -e "  수수료: ${MIN_FEE} 코인 (암묵적 수수료)"
 TX1_RESULT=$(curl -s -X POST "${API_BASE}/tx/send" \
   -H "Content-Type: application/json" \
   -d "{
     \"accountIndex\": 0,
     \"to\": \"${USER1_ADDR}\",
     \"amount\": ${AMOUNT_TO_USER1},
-    \"memo\": \"Wallet to User1 transfer\"
+    \"fee\": ${MIN_FEE},
+    \"memo\": \"Wallet to User1 transfer (fee: ${MIN_FEE})\"
   }")
 
 echo "응답: $TX1_RESULT"
@@ -165,12 +170,34 @@ echo ""
 echo -e "${BLUE}[검증] 결과 확인${NC}"
 echo "----------------------------------------"
 
-EXPECTED_SENDER=$((SENDER_BAL - AMOUNT_TO_USER1))
+# 송신자가 proposer(블록 생성자)와 동일한지 확인
+# 동일하면 블록 보상 + 수수료를 받음
+PROPOSER_ADDR=$(curl -s "${API_BASE}/block/latest" | jq -r '.data.proposer // ""')
+
+echo -e "블록 제안자: ${PROPOSER_ADDR:0:16}..."
+echo -e "송신자 주소: ${SENDER_ADDR:0:16}..."
+
+# 기본 예상 잔액 계산 (수수료 포함)
+# 송신자: 초기잔액 - 금액 - 수수료
+EXPECTED_SENDER=$((SENDER_BAL - AMOUNT_TO_USER1 - MIN_FEE))
 EXPECTED_USER1=$((USER1_BAL + AMOUNT_TO_USER1))
 
-echo "예상 잔액:"
-echo "  송신자: ${EXPECTED_SENDER} 코인"
-echo "  User1: ${EXPECTED_USER1} 코인"
+# 송신자가 proposer인 경우, 블록 보상 + 수수료를 받음
+if [ "$PROPOSER_ADDR" == "$SENDER_ADDR" ]; then
+    echo -e "${YELLOW}송신자가 블록 제안자입니다. 블록 보상 + 수수료를 받습니다.${NC}"
+    # 블록 보상 + 수수료(본인이 낸 것)를 받음
+    EXPECTED_SENDER=$((EXPECTED_SENDER + BLOCK_REWARD + MIN_FEE))
+fi
+
+echo ""
+echo "예상 잔액 계산:"
+echo "  송신자: 초기(${SENDER_BAL}) - 금액(${AMOUNT_TO_USER1}) - 수수료(${MIN_FEE})"
+if [ "$PROPOSER_ADDR" == "$SENDER_ADDR" ]; then
+    echo "         + 블록보상(${BLOCK_REWARD}) + 수수료(${MIN_FEE}) = ${EXPECTED_SENDER} 코인"
+else
+    echo "         = ${EXPECTED_SENDER} 코인"
+fi
+echo "  User1: 초기(${USER1_BAL}) + 금액(${AMOUNT_TO_USER1}) = ${EXPECTED_USER1} 코인"
 
 echo ""
 echo "실제 잔액:"
@@ -183,12 +210,14 @@ if [ "$FINAL_SENDER" -eq "$EXPECTED_SENDER" ] && \
    [ "$FINAL_USER1" -eq "$EXPECTED_USER1" ]; then
     echo -e "${GREEN}=============================================${NC}"
     echo -e "${GREEN}   모든 테스트 통과!${NC}"
-    echo -e "${GREEN}   서명된 트랜잭션이 정상 처리되었습니다.${NC}"
+    echo -e "${GREEN}   수수료 포함 트랜잭션이 정상 처리되었습니다.${NC}"
     echo -e "${GREEN}=============================================${NC}"
 else
     echo -e "${YELLOW}=============================================${NC}"
     echo -e "${YELLOW}   잔액이 예상과 다릅니다${NC}"
-    echo -e "${YELLOW}   (블록 생성 타이밍 문제일 수 있음)${NC}"
+    echo -e "${YELLOW}   예상 송신자: ${EXPECTED_SENDER}, 실제: ${FINAL_SENDER}${NC}"
+    echo -e "${YELLOW}   예상 User1: ${EXPECTED_USER1}, 실제: ${FINAL_USER1}${NC}"
+    echo -e "${YELLOW}   (블록 생성 타이밍 또는 Coinbase TX 문제일 수 있음)${NC}"
     echo -e "${YELLOW}=============================================${NC}"
 fi
 

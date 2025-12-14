@@ -11,7 +11,7 @@ GET http://localhost:8001/api/v1/status
 GET http://localhost:8000/api/v1/blocks
 
 ### 포트 8000
-GET http://localhost:8001/api/v1/block/height/0
+GET http://localhost:8001/api/v1/block/height/10
 
 ### 블록 해시로 조회
 GET http://localhost:8000/api/v1/block/hash/9fb357de59ad40056d8136af1e8eef2d38fcf2bdb596d184fb5dd162bf2e6142
@@ -20,13 +20,13 @@ GET http://localhost:8000/api/v1/block/hash/9fb357de59ad40056d8136af1e8eef2d38fc
 GET http://localhost:8000/api/v1/blocks?page=1&limit=10
 
 ### 트랜잭션 조회
-GET http://localhost:8000/api/v1/tx/c23bd5d83e2aa45a8349b920f15c70d3e6b6aef1f29ca7cca8cc71ba70aab17c
+GET http://localhost:8000/api/v1/tx/9ccc799f6931ab065ecd9feed0ca75ca09d3196a3001540b90b2846309606344
 
 ### 주소 잔액 조회
-GET http://localhost:8000/api/v1/address/ebe9e4b52de2b198181686c2094223836bfa0e60/balance
+GET http://localhost:8000/api/v1/address/01b2542a9097399d94a1875d125c38bbed39fa12/balance
 
 ### 주소 UTXO 조회
-GET http://localhost:8000/api/v1/address/ebe9e4b52de2b198181686c2094223836bfa0e60/utxo
+GET http://localhost:8000/api/v1/address/af6736b1d7b01ac01e06da7f8fc3b83a480d6cdf/utxo
 
 ### 멤풀 조회
 GET http://localhost:8000/api/v1/mempool/list

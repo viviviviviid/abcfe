@@ -43,6 +43,7 @@ type Version struct {
 type Genesis struct {
 	SystemAddresses []string `toml:"SystemAddresses"`
 	SystemBalances  []uint64 `toml:"SystemBalances"`
+	Timestamp       int64    `toml:"Timestamp"` // 제네시스 블록 타임스탬프 (고정값, 0이면 현재 시간 사용)
 }
 
 // ValidatorConfig 제네시스 검증자 설정
@@ -67,6 +68,12 @@ type P2P struct {
 	BootNodes []string `toml:"BootNodes"`
 }
 
+// Fee 수수료 설정
+type Fee struct {
+	MinFee      uint64 `toml:"minFee"`      // 최소 수수료 (고정값)
+	BlockReward uint64 `toml:"blockReward"` // 블록 생성 보상
+}
+
 type Config struct {
 	Common     Common
 	LogInfo    LogInfo
@@ -77,6 +84,7 @@ type Config struct {
 	Validators Validators // 제네시스 검증자 목록 (PoA)
 	Server     Server
 	P2P        P2P
+	Fee        Fee // 수수료 설정
 }
 
 func NewConfig(filepath string) (*Config, error) {

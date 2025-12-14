@@ -224,8 +224,11 @@ func (e *ConsensusEngine) produceBlockSolo() {
 		proposerAddr = e.consensus.LocalValidator.Address
 	}
 
+	// 블록 타임스탬프 (모든 노드에서 동일하게 사용)
+	blockTimestamp := time.Now().Unix()
+
 	// 새 블록 생성
-	newBlock := e.blockchain.SetBlock(prevHash, currentHeight+1, proposerAddr)
+	newBlock := e.blockchain.SetBlock(prevHash, currentHeight+1, proposerAddr, blockTimestamp)
 	if newBlock == nil {
 		logger.Error("[Consensus] Failed to create block")
 		return
@@ -283,8 +286,11 @@ func (e *ConsensusEngine) proposeBlock() {
 		proposerAddr = e.consensus.LocalValidator.Address
 	}
 
+	// 블록 타임스탬프 (모든 노드에서 동일하게 사용)
+	blockTimestamp := time.Now().Unix()
+
 	// 새 블록 생성
-	newBlock := e.blockchain.SetBlock(prevHash, currentHeight+1, proposerAddr)
+	newBlock := e.blockchain.SetBlock(prevHash, currentHeight+1, proposerAddr, blockTimestamp)
 	if newBlock == nil {
 		logger.Error("[Consensus] Failed to create proposed block")
 		return

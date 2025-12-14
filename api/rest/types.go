@@ -47,12 +47,14 @@ type TxResp struct {
 	Inputs    []interface{} `json:"inputs"`
 	Outputs   []interface{} `json:"outputs"`
 	Memo      string        `json:"memo"`
+	Fee       uint64        `json:"fee"` // 암묵적 수수료 (InputSum - OutputSum)
 }
 
 type SubmitTxReq struct {
 	From   string `json:"from"`
 	To     string `json:"to"`
 	Amount uint64 `json:"amount"`
+	Fee    uint64 `json:"fee"` // 수수료 (선택, 0이면 최소 수수료 적용)
 	Memo   string `json:"memo"`
 	Data   []byte `json:"data"`
 }
@@ -85,6 +87,7 @@ type SendTxReq struct {
 	AccountIndex int    `json:"accountIndex"` // 지갑 계정 인덱스 (기본 0)
 	To           string `json:"to"`
 	Amount       uint64 `json:"amount"`
+	Fee          uint64 `json:"fee"` // 수수료 (선택, 0이면 최소 수수료 적용)
 	Memo         string `json:"memo"`
 	Data         []byte `json:"data"`
 }

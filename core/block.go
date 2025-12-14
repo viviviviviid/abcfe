@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/abcfe/abcfe-node/common/logger"
 	"github.com/abcfe/abcfe-node/common/utils"
@@ -39,7 +38,7 @@ type BlockHeader struct {
 	// StateRoot  Hash   `json:"stateRoot"`  // 상태 머클 루트 (UTXO 또는 계정 상태)
 }
 
-func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Address) *Block {
+func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Address, blockTimestamp int64) *Block {
 	// 메모리 풀에서 트랜잭션 가져오기
 	candidateTxs := p.Mempool.GetTxs()
 
@@ -48,6 +47,8 @@ func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Add
 	// 유효한 트랜잭션만 필터링 (서명 검증 포함)
 	var validTxs []*Transaction
 	var invalidTxIds []prt.Hash
+	var totalFees uint64 = 0
+
 	for _, tx := range candidateTxs {
 		if err := p.ValidateTransaction(tx); err != nil {
 			// 검증 실패한 트랜잭션은 멤풀에서 제거 예정
@@ -55,7 +56,17 @@ func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Add
 			invalidTxIds = append(invalidTxIds, tx.ID)
 			continue
 		}
-		logger.Info("[SetBlock] TX validated: ", utils.HashToString(tx.ID)[:16])
+
+		// 수수료 계산
+		fee, err := p.CalculateTxFee(tx)
+		if err != nil {
+			logger.Warn("[SetBlock] Failed to calculate fee for TX: ", utils.HashToString(tx.ID)[:16], " error: ", err)
+			invalidTxIds = append(invalidTxIds, tx.ID)
+			continue
+		}
+
+		totalFees += fee
+		logger.Info("[SetBlock] TX validated: ", utils.HashToString(tx.ID)[:16], " fee: ", fee)
 		validTxs = append(validTxs, tx)
 	}
 
@@ -63,6 +74,15 @@ func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Add
 	for _, txId := range invalidTxIds {
 		logger.Warn("[SetBlock] Removing invalid TX from mempool: ", utils.HashToString(txId)[:16])
 		p.Mempool.DelTx(txId)
+	}
+
+	// Coinbase TX 생성 (블록 보상 + 수수료) - 블록 타임스탬프 사용
+	var emptyProposer prt.Address
+	if proposer != emptyProposer {
+		coinbaseTx := p.createCoinbaseTx(proposer, height, totalFees, blockTimestamp)
+		// Coinbase TX를 맨 앞에 추가
+		validTxs = append([]*Transaction{coinbaseTx}, validTxs...)
+		logger.Info("[SetBlock] Coinbase TX created: reward=", p.GetBlockReward(), " fees=", totalFees, " total=", p.GetBlockReward()+totalFees)
 	}
 
 	txs := validTxs
@@ -75,7 +95,7 @@ func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Add
 		Version:    p.cfg.Version.Protocol,
 		Height:     height,
 		PrevHash:   prevHash,
-		Timestamp:  time.Now().Unix(),
+		Timestamp:  blockTimestamp,
 		MerkleRoot: merkleRoot,
 	}
 
@@ -90,6 +110,32 @@ func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Add
 	blk.Header.Hash = blkHash
 
 	return blk
+}
+
+// createCoinbaseTx Coinbase 트랜잭션 생성 (블록 보상 + 수수료를 제안자에게 지급)
+func (p *BlockChain) createCoinbaseTx(proposer prt.Address, height uint64, totalFees uint64, blockTimestamp int64) *Transaction {
+	blockReward := p.GetBlockReward()
+	totalReward := blockReward + totalFees
+
+	coinbaseTx := &Transaction{
+		Version:   p.cfg.Version.Transaction,
+		Timestamp: blockTimestamp, // 블록 타임스탬프 사용 (모든 노드에서 동일한 값)
+		Inputs:    []*TxInput{},   // Coinbase TX는 Input이 없음
+		Outputs: []*TxOutput{
+			{
+				Address: proposer,
+				Amount:  totalReward,
+				TxType:  TxTypeCoinbase,
+			},
+		},
+		Memo: fmt.Sprintf("Block %d Coinbase: reward=%d, fees=%d", height, blockReward, totalFees),
+		Data: []byte{}, // 빈 데이터 (nil과 구분하기 위해 명시적으로 설정)
+	}
+
+	// TX ID 계산
+	coinbaseTx.ID = utils.Hash(coinbaseTx)
+
+	return coinbaseTx
 }
 
 // SignBlock 블록에 서명 추가

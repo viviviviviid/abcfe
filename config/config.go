@@ -74,17 +74,24 @@ type Fee struct {
 	BlockReward uint64 `toml:"blockReward"` // 블록 생성 보상
 }
 
+// Transaction 트랜잭션 제한 설정
+type Transaction struct {
+	MaxMemoSize uint64 `toml:"maxMemoSize"` // 최대 메모 크기 (bytes)
+	MaxDataSize uint64 `toml:"maxDataSize"` // 최대 데이터 크기 (bytes)
+}
+
 type Config struct {
-	Common     Common
-	LogInfo    LogInfo
-	DB         DB
-	Wallet     Wallet
-	Version    Version
-	Genesis    Genesis
-	Validators Validators // 제네시스 검증자 목록 (PoA)
-	Server     Server
-	P2P        P2P
-	Fee        Fee // 수수료 설정
+	Common      Common
+	LogInfo     LogInfo
+	DB          DB
+	Wallet      Wallet
+	Version     Version
+	Genesis     Genesis
+	Validators  Validators  // 제네시스 검증자 목록 (PoA)
+	Server      Server
+	P2P         P2P
+	Fee         Fee         // 수수료 설정
+	Transaction Transaction // 트랜잭션 제한 설정
 }
 
 func NewConfig(filepath string) (*Config, error) {

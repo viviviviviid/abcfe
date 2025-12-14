@@ -40,3 +40,7 @@ BootNodes = []
 [fee]
 minFee = 1000           # 최소 수수료 (1000 단위)
 blockReward = 50000000  # 블록 생성 보상 (50 토큰)
+
+[transaction]
+maxMemoSize = 256       # 최대 메모 크기 (256 bytes)
+maxDataSize = 1024      # 최대 데이터 크기 (1 KB)

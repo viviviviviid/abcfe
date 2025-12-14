@@ -27,6 +27,17 @@ AMOUNT_TO_USER1=1000
 MIN_FEE=1  # 최소 수수료 (config.toml [fee] minFee와 일치)
 BLOCK_REWARD=50  # 블록 보상 (config.toml [fee] blockReward와 일치)
 
+# 플래그 파싱
+TEST_LONG_MEMO=false
+for arg in "$@"; do
+    case $arg in
+        --long-memo)
+            TEST_LONG_MEMO=true
+            shift
+            ;;
+    esac
+done
+
 echo -e "${BLUE}=============================================${NC}"
 echo -e "${BLUE}   ABCFe 트랜잭션 테스트 시작${NC}"
 echo -e "${BLUE}   (서명된 트랜잭션 버전)${NC}"
@@ -101,9 +112,20 @@ fi
 echo -e "${BLUE}[Step 1] 송신자 -> User1 트랜잭션 (${AMOUNT_TO_USER1} 코인 + 수수료 ${MIN_FEE})${NC}"
 echo "----------------------------------------"
 
+# 메모 생성
+if [ "$TEST_LONG_MEMO" = true ]; then
+    # 300자 메모 생성 (maxMemoSize=256 초과)
+    MEMO=$(printf 'A%.0s' {1..300})
+    echo -e "${YELLOW}[테스트] 긴 메모 테스트 모드 (${#MEMO} bytes > 256 bytes)${NC}"
+    echo -e "${YELLOW}        이 트랜잭션은 실패해야 합니다!${NC}"
+else
+    MEMO="Wallet to User1 transfer (fee: ${MIN_FEE})"
+fi
+
 echo -e "트랜잭션 전송 중 (/tx/send - 서버 지갑 서명)..."
 echo -e "  금액: ${AMOUNT_TO_USER1} 코인"
 echo -e "  수수료: ${MIN_FEE} 코인 (암묵적 수수료)"
+echo -e "  메모 길이: ${#MEMO} bytes"
 TX1_RESULT=$(curl -s -X POST "${API_BASE}/tx/send" \
   -H "Content-Type: application/json" \
   -d "{
@@ -111,16 +133,31 @@ TX1_RESULT=$(curl -s -X POST "${API_BASE}/tx/send" \
     \"to\": \"${USER1_ADDR}\",
     \"amount\": ${AMOUNT_TO_USER1},
     \"fee\": ${MIN_FEE},
-    \"memo\": \"Wallet to User1 transfer (fee: ${MIN_FEE})\"
+    \"memo\": \"${MEMO}\"
   }")
 
 echo "응답: $TX1_RESULT"
 
 if echo "$TX1_RESULT" | jq -e '.success == true' > /dev/null 2>&1; then
     TX_ID=$(echo "$TX1_RESULT" | jq -r '.data.txId')
+    if [ "$TEST_LONG_MEMO" = true ]; then
+        echo -e "${RED}트랜잭션이 성공했지만, 실패해야 합니다!${NC}"
+        echo -e "${RED}메모 크기 검증이 작동하지 않습니다.${NC}"
+        exit 1
+    fi
     echo -e "${GREEN}트랜잭션 성공!${NC}"
     echo -e "  TX ID: ${TX_ID:0:16}..."
 else
+    if [ "$TEST_LONG_MEMO" = true ]; then
+        echo -e "${GREEN}예상대로 트랜잭션 실패!${NC}"
+        echo -e "${GREEN}메모 크기 검증이 정상 작동합니다.${NC}"
+        echo "$TX1_RESULT" | jq -r '.error // .message // .'
+        echo ""
+        echo -e "${GREEN}=============================================${NC}"
+        echo -e "${GREEN}   긴 메모 테스트 통과!${NC}"
+        echo -e "${GREEN}=============================================${NC}"
+        exit 0
+    fi
     echo -e "${RED}트랜잭션 실패!${NC}"
     echo "$TX1_RESULT" | jq .
     exit 1

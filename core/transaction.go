@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/abcfe/abcfe-node/common/crypto"
+	"github.com/abcfe/abcfe-node/common/logger"
 	"github.com/abcfe/abcfe-node/common/utils"
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
@@ -344,9 +345,17 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 		return nil, fmt.Errorf("failed to get UTXO list: %w", err)
 	}
 
+	// 디버깅: UTXO 목록 확인
+	logger.Debug("[CreateSignedTx] from: ", utils.AddressToString(from))
+	logger.Debug("[CreateSignedTx] UTXO count: ", len(utxos))
+	for i, utxo := range utxos {
+		logger.Debug("[CreateSignedTx] UTXO[", i, "]: txId=", utils.HashToString(utxo.TxId)[:16], " amount=", utxo.TxOut.Amount, " spent=", utxo.Spent)
+	}
+
 	// 수수료 포함한 총 필요 금액
 	requiredAmount := amount + fee
 	balance := p.CalBalanceUtxo(utxos)
+	logger.Debug("[CreateSignedTx] balance: ", balance, " requiredAmount: ", requiredAmount)
 	if balance < requiredAmount {
 		return nil, fmt.Errorf("not enough balance: have %d, need %d (amount %d + fee %d)", balance, requiredAmount, amount, fee)
 	}

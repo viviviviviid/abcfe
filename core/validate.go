@@ -255,6 +255,18 @@ func (p *BlockChain) ValidateTransaction(tx *Transaction) error {
 		return err
 	}
 
+	// 메모 크기 검증
+	maxMemoSize := p.GetMaxMemoSize()
+	if maxMemoSize > 0 && uint64(len(tx.Memo)) > maxMemoSize {
+		return fmt.Errorf("memo too long: %d bytes > max %d bytes", len(tx.Memo), maxMemoSize)
+	}
+
+	// 데이터 크기 검증
+	maxDataSize := p.GetMaxDataSize()
+	if maxDataSize > 0 && uint64(len(tx.Data)) > maxDataSize {
+		return fmt.Errorf("data too long: %d bytes > max %d bytes", len(tx.Data), maxDataSize)
+	}
+
 	// Coinbase 트랜잭션 (input이 없음) - 별도 검증
 	if len(tx.Inputs) == 0 {
 		return p.ValidateCoinbaseTx(tx)

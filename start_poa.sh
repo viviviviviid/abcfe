@@ -244,6 +244,10 @@ BootNodes = []
 [fee]
 minFee = 1
 blockReward = 50
+
+[transaction]
+maxMemoSize = 256
+maxDataSize = 1024
 ${VALIDATORS_TOML}
 EOF
 echo "  ✓ config/config_poa_node1.toml (Boot)"
@@ -297,6 +301,10 @@ BootNodes = ["127.0.0.1:30303"]
 [fee]
 minFee = 1
 blockReward = 50
+
+[transaction]
+maxMemoSize = 256
+maxDataSize = 1024
 ${VALIDATORS_TOML}
 EOF
     echo "  ✓ config/config_poa_node${i}.toml (Validator)"
@@ -357,6 +365,10 @@ BootNodes = []
 [fee]
 minFee = 1
 blockReward = 50
+
+[transaction]
+maxMemoSize = 256
+maxDataSize = 1024
 ${VALIDATORS_TOML}
 EOFGEN
 

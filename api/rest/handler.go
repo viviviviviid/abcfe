@@ -73,7 +73,7 @@ func GetLatestBlock(bc *core.BlockChain) http.HandlerFunc {
 			return
 		}
 
-		response, err := formatBlockResp(block)
+		response, err := formatBlockResp(block, bc)
 		if err != nil {
 			sendResp(w, http.StatusInternalServerError, nil, err)
 			return
@@ -101,7 +101,7 @@ func GetBlockByHeight(bc *core.BlockChain) http.HandlerFunc {
 			return
 		}
 
-		response, err := formatBlockResp(block)
+		response, err := formatBlockResp(block, bc)
 		if err != nil {
 			sendResp(w, http.StatusInternalServerError, nil, err)
 			return
@@ -129,7 +129,7 @@ func GetBlockByHash(bc *core.BlockChain) http.HandlerFunc {
 			return
 		}
 
-		response, err := formatBlockResp(block)
+		response, err := formatBlockResp(block, bc)
 		if err != nil {
 			sendResp(w, http.StatusInternalServerError, nil, err)
 			return
@@ -157,7 +157,7 @@ func GetTx(bc *core.BlockChain) http.HandlerFunc {
 			return
 		}
 
-		response := formatTxResp(tx)
+		response := formatTxResp(tx, bc)
 		sendResp(w, http.StatusOK, response, nil)
 	}
 }
@@ -282,7 +282,7 @@ func GetMempoolList(bc *core.BlockChain) http.HandlerFunc {
 
 		mempoolTxs := bc.Mempool.GetTxs()
 
-		response := formatTxsResp(mempoolTxs)
+		response := formatTxsResp(mempoolTxs, bc)
 
 		sendResp(w, http.StatusOK, response, nil)
 	}
@@ -306,10 +306,10 @@ func sendResp(w http.ResponseWriter, statusCode int, data interface{}, err error
 }
 
 // get block response
-func formatBlockResp(block *core.Block) (BlockResp, error) {
+func formatBlockResp(block *core.Block, bc *core.BlockChain) (BlockResp, error) {
 	txDetails := make([]TxResp, len(block.Transactions))
 	for i, tx := range block.Transactions {
-		txDetails[i] = formatTxResp(tx)
+		txDetails[i] = formatTxResp(tx, bc)
 	}
 
 	// BFT CommitSignatures 변환
@@ -342,21 +342,8 @@ func formatBlockResp(block *core.Block) (BlockResp, error) {
 	return response, nil
 }
 
-// get tx response (fee는 클라이언트에서 계산하거나 블록체인 조회 필요)
-func formatTxResp(tx *core.Transaction) TxResp {
-	return TxResp{
-		ID:        utils.HashToString(tx.ID),
-		Version:   tx.Version,
-		Timestamp: tx.Timestamp,
-		Inputs:    formatTxInputsResp(tx.Inputs),
-		Outputs:   formatTxOutputsResp(tx.Outputs),
-		Memo:      tx.Memo,
-		Fee:       0, // 기본값 (Coinbase TX 또는 계산 불가 시)
-	}
-}
-
-// formatTxRespWithFee 수수료 정보를 포함한 트랜잭션 응답
-func formatTxRespWithFee(tx *core.Transaction, bc *core.BlockChain) TxResp {
+// get tx response (수수료 정보 포함)
+func formatTxResp(tx *core.Transaction, bc *core.BlockChain) TxResp {
 	fee, _ := bc.CalculateTxFee(tx)
 	return TxResp{
 		ID:        utils.HashToString(tx.ID),
@@ -410,10 +397,10 @@ func formatUtxoResp(utxos []*core.UTXO) []interface{} {
 	return result
 }
 
-func formatTxsResp(txs []*core.Transaction) []interface{} {
+func formatTxsResp(txs []*core.Transaction, bc *core.BlockChain) []interface{} {
 	result := make([]interface{}, len(txs))
 	for i, tx := range txs {
-		result[i] = formatTxResp(tx)
+		result[i] = formatTxResp(tx, bc)
 	}
 	return result
 }
@@ -697,7 +684,7 @@ func GetBlocks(bc *core.BlockChain) http.HandlerFunc {
 				if err != nil {
 					continue
 				}
-				blockResp, _ := formatBlockResp(block)
+				blockResp, _ := formatBlockResp(block, bc)
 				blocks = append(blocks, blockResp)
 			}
 		} else {
@@ -708,7 +695,7 @@ func GetBlocks(bc *core.BlockChain) http.HandlerFunc {
 				if err != nil {
 					continue
 				}
-				blockResp, _ := formatBlockResp(block)
+				blockResp, _ := formatBlockResp(block, bc)
 				blocks = append(blocks, blockResp)
 			}
 		}

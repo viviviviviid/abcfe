@@ -188,3 +188,13 @@ func (p *BlockChain) GetMinFee() uint64 {
 func (p *BlockChain) GetBlockReward() uint64 {
 	return p.cfg.Fee.BlockReward
 }
+
+// GetMaxMemoSize 최대 메모 크기 반환
+func (p *BlockChain) GetMaxMemoSize() uint64 {
+	return p.cfg.Transaction.MaxMemoSize
+}
+
+// GetMaxDataSize 최대 데이터 크기 반환
+func (p *BlockChain) GetMaxDataSize() uint64 {
+	return p.cfg.Transaction.MaxDataSize
+}

@@ -51,8 +51,8 @@ type ConsensusEngine struct {
 	stopCh  chan struct{}
 
 	// 라운드 타임아웃
-	roundTimer       *time.Timer
-	roundTimerMu     sync.Mutex
+	roundTimer          *time.Timer
+	roundTimerMu        sync.Mutex
 	consecutiveTimeouts int // 연속 타임아웃 카운터
 }
 
@@ -445,28 +445,30 @@ func (e *ConsensusEngine) HandleVote(vote *Vote) {
 	switch vote.Type {
 	case VoteTypePrevote:
 		if e.prevotes != nil {
+			e.prevotes.AddVote(vote, validator.VotingPower)
 			added := e.prevotes.AddVote(vote, validator.VotingPower)
 			if added {
-				logger.Info("[Consensus] Prevote received from ", voterAddr, " (", e.prevotes.VotedPower, "/", totalPower, " = ", len(e.prevotes.Votes), " votes)")
+				logger.Debug("[Consensus] Prevote received from ", voterAddr, " (", e.prevotes.VotedPower, "/", totalPower, " = ", len(e.prevotes.Votes), " votes)")
 			}
 
 			// 2/3 이상이면 precommit으로
 			if e.prevotes.HasTwoThirdsMajority(totalPower) {
-				logger.Info("[Consensus] Prevote 2/3+ reached at height ", vote.Height, " (", e.prevotes.VotedPower, "/", totalPower, ")")
+				logger.Debug("[Consensus] Prevote 2/3+ reached at height ", vote.Height, " (", e.prevotes.VotedPower, "/", totalPower, ")")
 				e.castVote(VoteTypePrecommit, vote.BlockHash)
 			}
 		}
 
 	case VoteTypePrecommit:
 		if e.precommits != nil {
+			e.precommits.AddVote(vote, validator.VotingPower)
 			added := e.precommits.AddVote(vote, validator.VotingPower)
 			if added {
-				logger.Info("[Consensus] Precommit received from ", voterAddr, " (", e.precommits.VotedPower, "/", totalPower, " = ", len(e.precommits.Votes), " votes)")
+				logger.Debug("[Consensus] Precommit received from ", voterAddr, " (", e.precommits.VotedPower, "/", totalPower, " = ", len(e.precommits.Votes), " votes)")
 			}
 
 			// 2/3 이상이면 커밋
 			if e.precommits.HasTwoThirdsMajority(totalPower) && e.proposedBlock != nil {
-				logger.Info("[Consensus] Precommit 2/3+ reached at height ", vote.Height, " (", e.precommits.VotedPower, "/", totalPower, "), committing block")
+				logger.Debug("[Consensus] Precommit 2/3+ reached at height ", vote.Height, " (", e.precommits.VotedPower, "/", totalPower, "), committing block")
 				e.commitBlockWithSignatures(e.proposedBlock)
 			}
 		}

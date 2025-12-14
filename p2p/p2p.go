@@ -477,7 +477,7 @@ func (s *P2PService) handlePeers(msg *Message, peer *Peer) {
 		return
 	}
 
-	logger.Info("[P2P] Received ", len(payload.Peers), " peers from ", peer.Address)
+	logger.Debug("[P2P] Received ", len(payload.Peers), " peers from ", peer.Address)
 
 	// 수신한 피어들에게 연결 시도
 	for _, peerInfo := range payload.Peers {
@@ -750,7 +750,7 @@ func (s *P2PService) SyncBlocks() error {
 	}
 
 	peers := s.Node.GetPeers()
-	logger.Info("[Sync] Available peers: ", len(peers))
+	logger.Debug("[Sync] Available peers: ", len(peers))
 	if len(peers) == 0 {
 		return fmt.Errorf("no peers available")
 	}
@@ -760,7 +760,7 @@ func (s *P2PService) SyncBlocks() error {
 	var bestHeight uint64
 
 	for _, peer := range peers {
-		logger.Info("[Sync] Peer ", peer.ID, " state=", peer.State, " height=", peer.BestHeight)
+		logger.Debug("[Sync] Peer ", peer.ID, " state=", peer.State, " height=", peer.BestHeight)
 		if peer.State == PeerStateActive && peer.BestHeight >= bestHeight {
 			// 높이가 같거나 높은 피어 선택 (첫 번째 active 피어라도 선택되도록)
 			if bestPeer == nil || peer.BestHeight > bestHeight {
@@ -787,11 +787,11 @@ func (s *P2PService) SyncBlocks() error {
 		logger.Info("[Sync] Requesting blocks 0 to ", bestHeight, " from peer ", bestPeer.ID)
 		return s.RequestBlocks(bestPeer, 0, bestHeight)
 	}
-	
+
 	logger.Info("[Sync] Current height: ", currentHeight, ", Best peer height: ", bestHeight)
-	
+
 	if bestHeight <= currentHeight {
-		logger.Info("[Sync] Already synced (current=", currentHeight, ", best=", bestHeight, ")")
+		logger.Debug("[Sync] Already synced (current=", currentHeight, ", best=", bestHeight, ")")
 		return nil // 이미 동기화됨
 	}
 

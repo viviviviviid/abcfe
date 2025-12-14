@@ -26,7 +26,7 @@ type BlockResp struct {
 type CommitSignatureResp struct {
 	ValidatorAddress string `json:"validatorAddress"` // 검증자 주소
 	Signature        string `json:"signature"`        // 검증자 서명
-	Timestamp        int64  `json:"timestamp"`        // 서명 시간
+	// Timestamp        int64  `json:"timestamp"`        // 서명 시간
 }
 
 type BlockHeaderResp struct {
@@ -59,19 +59,19 @@ type SubmitTxReq struct {
 
 // 서명된 트랜잭션 제출 요청 (클라이언트가 서명)
 type SubmitSignedTxReq struct {
-	Version   string           `json:"version"`
-	Timestamp int64            `json:"timestamp"`
-	Inputs    []SignedTxInput  `json:"inputs"`
-	Outputs   []TxOutputReq    `json:"outputs"`
-	Memo      string           `json:"memo"`
-	Data      []byte           `json:"data"`
+	Version   string          `json:"version"`
+	Timestamp int64           `json:"timestamp"`
+	Inputs    []SignedTxInput `json:"inputs"`
+	Outputs   []TxOutputReq   `json:"outputs"`
+	Memo      string          `json:"memo"`
+	Data      []byte          `json:"data"`
 }
 
 type SignedTxInput struct {
-	TxID        string `json:"txId"`        // hex string
+	TxID        string `json:"txId"` // hex string
 	OutputIndex uint64 `json:"outputIndex"`
-	Signature   string `json:"signature"`   // hex string
-	PublicKey   string `json:"publicKey"`   // hex string
+	Signature   string `json:"signature"` // hex string
+	PublicKey   string `json:"publicKey"` // hex string
 }
 
 type TxOutputReq struct {

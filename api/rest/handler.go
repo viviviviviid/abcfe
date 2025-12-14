@@ -49,7 +49,7 @@ func GetStatus(bc *core.BlockChain) http.HandlerFunc {
 			"currentHeight":    status.LatestHeight,
 			"currentBlockHash": status.LatestBlockHash,
 			"genesisHash":      genesisHash,
-			"networkId":         networkId,
+			"networkId":        networkId,
 			"mempoolSize":      mempoolSize,
 		}
 
@@ -312,7 +312,6 @@ func formatBlockResp(block *core.Block) (BlockResp, error) {
 			commitSigs[i] = CommitSignatureResp{
 				ValidatorAddress: utils.AddressToString(sig.ValidatorAddress),
 				Signature:        utils.SignatureToString(sig.Signature),
-				Timestamp:        sig.Timestamp,
 			}
 		}
 	}
@@ -734,8 +733,8 @@ func GetConsensusStatus(cons *consensus.Consensus) http.HandlerFunc {
 				if validator.IsActive {
 					validators = append(validators, map[string]interface{}{
 						"address":       addrStr,
-						"stakingAmount":  validator.VotingPower,
-						"isActive":       validator.IsActive,
+						"stakingAmount": validator.VotingPower,
+						"isActive":      validator.IsActive,
 					})
 					votingPower[addrStr] = validator.VotingPower
 				}
@@ -743,7 +742,7 @@ func GetConsensusStatus(cons *consensus.Consensus) http.HandlerFunc {
 		}
 
 		status := map[string]interface{}{
-			"state":         string(cons.State),      // IDLE, PROPOSING, VOTING, COMMITTING
+			"state":         string(cons.State), // IDLE, PROPOSING, VOTING, COMMITTING
 			"currentHeight": cons.CurrentHeight,
 			"currentRound":  cons.CurrentRound,
 			"proposer":      proposerAddr,

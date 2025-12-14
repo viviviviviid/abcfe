@@ -367,7 +367,7 @@ echo -e "${BLUE}노드 순차 시작 중...${NC}"
 echo "  Node 1 시작 (Boot, REST: 8000, P2P: 30303)..."
 ./abcfed --config="config/config_poa_node1.toml" > /tmp/poa_node1.log 2>&1 &
 echo "  PID: $!"
-sleep 5
+sleep 3
 
 # 나머지 노드들
 for i in $(seq 2 $NODE_COUNT); do
@@ -376,7 +376,7 @@ for i in $(seq 2 $NODE_COUNT); do
     echo "  Node $i 시작 (REST: $REST_PORT, P2P: $P2P_PORT)..."
     ./abcfed --config="config/config_poa_node${i}.toml" > /tmp/poa_node${i}.log 2>&1 &
     echo "  PID: $!"
-    sleep 5
+    sleep 1
 done
 
 echo ""

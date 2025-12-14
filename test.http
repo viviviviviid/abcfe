@@ -10,27 +10,23 @@ GET http://localhost:8001/api/v1/status
 ### 블록 목록 조회
 GET http://localhost:8000/api/v1/blocks
 
-### 블록 높이로 8000~8009 포트 모두 조회
 ### 포트 8000
 GET http://localhost:8000/api/v1/block/height/0
 
-### 포트 8001
-GET http://localhost:8001/api/v1/block/height/0
-
 ### 블록 해시로 조회
-GET http://localhost:8000/api/v1/block/hash/1b924bef65123372e27e00c780d119b1b8b19d85c133b61446d61ee67a682690
+GET http://localhost:8000/api/v1/block/hash/9fb357de59ad40056d8136af1e8eef2d38fcf2bdb596d184fb5dd162bf2e6142
 
 ### 블록 목록 (페이지네이션)
 GET http://localhost:8000/api/v1/blocks?page=1&limit=10
 
 ### 트랜잭션 조회
-GET http://localhost:8000/api/v1/tx/942bbc04a271cb7df5272de4f0066b220e265cddbc419b55f2c31fbec36ca2f9
+GET http://localhost:8000/api/v1/tx/c23bd5d83e2aa45a8349b920f15c70d3e6b6aef1f29ca7cca8cc71ba70aab17c
 
 ### 주소 잔액 조회
-GET http://localhost:8000/api/v1/address/01b2542a9097399d94a1875d125c38bbed39fa12/balance
+GET http://localhost:8000/api/v1/address/ebe9e4b52de2b198181686c2094223836bfa0e60/balance
 
 ### 주소 UTXO 조회
-GET http://localhost:8000/api/v1/address/d79d745230218fc50118c59b0ee2c73934768a5f/utxo
+GET http://localhost:8000/api/v1/address/ebe9e4b52de2b198181686c2094223836bfa0e60/utxo
 
 ### 멤풀 조회
 GET http://localhost:8000/api/v1/mempool/list
@@ -38,27 +34,17 @@ GET http://localhost:8000/api/v1/mempool/list
 ### 컨센서스 상태 조회
 GET http://localhost:8000/api/v1/consensus/status
 
-### 컨센서스 검증자 목록 조회
-GET http://localhost:8000/api/v1/consensus/validators
-
-### 컨센서스 검증자 추가
-POST http://localhost:8000/api/v1/consensus/validator
-
-### 컨센서스 검증자 삭제
-DELETE http://localhost:8000/api/v1/consensus/validator/17112bdf0c4b66abcb6b9651538a36da97031cca
-
 ### 네트워크 통계 조회
 GET http://localhost:8000/api/v1/stats
-
-### 지갑 계정 목록 조회
-GET http://localhost:8000/api/v1/wallet/accounts
-
-### 새 계정 생성
-POST http://localhost:8000/api/v1/wallet/account/new
-
 
 ### P2P 피어 목록 조회
 GET http://localhost:8000/api/v1/p2p/peers
 
 ### P2P 상태 조회
 GET http://localhost:8006/api/v1/p2p/status
+
+### 새 계정 생성
+POST http://localhost:8000/api/v1/wallet/account/new
+
+### 지갑 계정 목록 조회 - 새 계정 생성 통해 만든 계정
+GET http://localhost:8000/api/v1/wallet/accounts

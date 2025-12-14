@@ -16,8 +16,8 @@ import (
 const (
 	MinStakeAmount     = 1000   // 최소 스테이킹 금액
 	MaxValidators      = 100    // 최대 검증자 수
-	BlockProduceTimeMs = 3000   // 블록 생성 간격 (밀리초)
-	RoundTimeoutMs     = 10000  // 라운드 타임아웃 (밀리초)
+	BlockProduceTimeMs = 15000  // 블록 생성 간격 (밀리초)
+	RoundTimeoutMs     = 15000  // 라운드 타임아웃 (밀리초)
 )
 
 // ConsensusState 컨센서스 상태

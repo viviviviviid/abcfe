@@ -26,9 +26,9 @@ import (
 type App struct {
 	stop       chan struct{}
 	Conf       conf.Config
-	DB         *leveldb.DB // db내의 mutex는 복사되면 안됨
+	DB         *leveldb.DB // Mutex within db should not be copied
 	BlockChain *core.BlockChain
-	restServer *rest.Server // 추가: REST API 서버 필드
+	restServer *rest.Server // Added: REST API server field
 	Wallet     *wallet.WalletManager
 
 	// Consensus & P2P
@@ -68,14 +68,14 @@ func New(configPath string) (*App, error) {
 		return nil, err
 	}
 
-	// Consensus 초기화
+	// Initialize Consensus
 	cons, err := consensus.NewConsensus(cfg, db)
 	if err != nil {
 		logger.Error("Failed to initialize consensus: ", err)
 		return nil, err
 	}
 
-	// BlockProducer인 경우 검증자로 등록
+	// If BlockProducer, register as validator
 	if cfg.Common.BlockProducer {
 		account := wallet.Wallet.Accounts[0]
 		if err := cons.RegisterValidator(account.Address, account.PublicKey, account.PrivateKey); err != nil {
@@ -85,13 +85,13 @@ func New(configPath string) (*App, error) {
 		logger.Info("Registered as validator: ", crypto.AddressTo0xPrefixString(account.Address))
 	}
 
-	// Consensus Engine 초기화
+	// Initialize Consensus Engine
 	consEngine := consensus.NewConsensusEngine(cons, bc)
 
-	// BlockChain에 ProposerValidator 설정 (PoA 검증용)
+	// Set ProposerValidator in BlockChain (for PoA verification)
 	bc.SetProposerValidator(cons)
 
-	// P2P 초기화 (먼저 생성해야 ConsensusEngine에 연결 가능)
+	// Initialize P2P (Create first to connect to ConsensusEngine)
 	p2pService, err := p2p.NewP2PService(
 		cfg.P2P.Address,
 		cfg.P2P.Port,
@@ -114,38 +114,38 @@ func New(configPath string) (*App, error) {
 		P2PService:      p2pService,
 	}
 
-	// REST API 서버 초기화
+	// Initialize REST API server
 	app.restServer = rest.NewServer(app.Conf.Server.RestPort, app.BlockChain, app.Wallet, app.Consensus)
 
-	// REST 서버에 P2P 서비스 설정
+	// Set P2P service in REST server
 	app.restServer.SetP2P(app.P2PService)
 
-	// 블록 커밋 시 P2P 브로드캐스트 및 WebSocket 알림 콜백 설정
+	// Set P2P broadcast and WebSocket notification callback on block commit
 	app.ConsensusEngine.SetBlockCommitCallback(func(block *core.Block) {
-		// P2P 브로드캐스트
+		// P2P Broadcast
 		if app.P2PService != nil && app.P2PService.IsRunning() {
 			if err := app.P2PService.BroadcastBlock(block); err != nil {
 				logger.Error("Failed to broadcast block: ", err)
 			}
 		}
-		// WebSocket 브로드캐스트
+		// WebSocket Broadcast
 		if wsHub := app.restServer.GetWSHub(); wsHub != nil {
 			wsHub.BroadcastNewBlock(block)
 		}
 	})
 
-	// ConsensusEngine에 P2P 브로드캐스터 설정
+	// Set P2P Broadcaster in ConsensusEngine
 	app.ConsensusEngine.SetP2PBroadcaster(app.P2PService)
 
-	// ConsensusEngine에 BlockSyncer 설정 (타임아웃 시 동기화용)
+	// Set BlockSyncer in ConsensusEngine (for sync on timeout)
 	app.ConsensusEngine.SetBlockSyncer(app.P2PService)
 
-	// P2P에서 Proposal 수신 시 ConsensusEngine으로 전달
+	// Deliver Proposal to ConsensusEngine when received from P2P
 	app.P2PService.SetProposalHandler(func(height uint64, round uint32, blockHash prt.Hash, block *core.Block) {
 		app.ConsensusEngine.HandleProposal(height, round, blockHash, block)
 	})
 
-	// P2P에서 Vote 수신 시 ConsensusEngine으로 전달
+	// Deliver Vote to ConsensusEngine when received from P2P
 	app.P2PService.SetVoteHandler(func(height uint64, round uint32, voteType uint8, blockHash prt.Hash, voterID prt.Address, signature prt.Signature) {
 		vote := &consensus.Vote{
 			Height:    height,
@@ -158,28 +158,28 @@ func New(configPath string) (*App, error) {
 		app.ConsensusEngine.HandleVote(vote)
 	})
 
-	// P2P에서 트랜잭션 수신 시 Mempool에 추가 및 전파
+	// Add to Mempool and propagate when transaction received from P2P
 	app.P2PService.SetTxHandler(func(tx *core.Transaction) {
-		// 트랜잭션 ID 문자열
+		// Transaction ID string
 		txID := utils.HashToString(tx.ID)
 
-		// 1. 유효성 검증
+		// 1. Validate
 		if err := app.BlockChain.ValidateTransaction(tx); err != nil {
 			logger.Debug("[TxHandler] Invalid tx received: ", txID[:16], " error: ", err)
 			return
 		}
 
-		// 2. 멤풀에 추가
-		// 이미 존재하면 에러를 반환하므로 중복 전파 방지 효과
+		// 2. Add to Mempool
+		// Returns error if already exists, preventing duplicate propagation
 		if err := app.BlockChain.Mempool.NewTranaction(tx); err != nil {
-			// 이미 존재하거나 에러가 나면 전파하지 않음
+			// Do not propagate if already exists or error occurs
 			return
 		}
 
 		logger.Debug("[TxHandler] Added tx to mempool: ", txID[:16])
 
-		// 3. 다른 피어들에게 재브로드캐스트 (Gossip)
-		// 내가 처음 받은 유효한 트랜잭션이라면 다른 피어들에게도 알려줌
+		// 3. Rebroadcast to other peers (Gossip)
+		// If I received valid transaction for the first time, tell other peers
 		if app.P2PService != nil {
 			if err := app.P2PService.BroadcastTx(tx); err != nil {
 				logger.Debug("[TxHandler] Failed to rebroadcast tx: ", err)
@@ -187,17 +187,17 @@ func New(configPath string) (*App, error) {
 		}
 	})
 
-	// 누락된 블록 저장용 맵 (높이 -> 블록)
+	// Map for storing pending blocks (height -> block)
 	pendingBlocks := make(map[uint64]*core.Block)
 	var pendingMu sync.Mutex
 
-	// P2P에서 블록 수신 시 처리 콜백 설정
+	// Set block handling callback when received from P2P
 	app.P2PService.SetBlockHandler(func(block *core.Block) {
-		// 이미 있는 블록인지 확인
+		// Check if block already exists
 		currentHeight, _ := app.BlockChain.GetLatestHeight()
 		logger.Debug("[BlockHandler] Received block height=", block.Header.Height, " current=", currentHeight)
 
-		// 빈 체인 (currentHeight == 0)이고 제네시스 블록 (height == 0)을 받은 경우 특별 처리
+		// Special handling if empty chain (currentHeight == 0) and received genesis block (height == 0)
 		if currentHeight == 0 && block.Header.Height == 0 {
 			logger.Info("[BlockHandler] Received genesis block from peer, importing...")
 			if err := app.BlockChain.ValidateBlock(*block); err != nil {
@@ -217,15 +217,15 @@ func New(configPath string) (*App, error) {
 			return
 		}
 
-		// 연속된 블록인지 확인
+		// Check if consecutive block
 		if block.Header.Height > currentHeight+1 {
 			logger.Debug("[BlockHandler] Missing blocks! Need height ", currentHeight+1, " got ", block.Header.Height, ". Storing pending block.")
-			// 나중에 처리할 수 있도록 저장
+			// Store for later processing
 			pendingMu.Lock()
 			pendingBlocks[block.Header.Height] = block
 			pendingMu.Unlock()
 
-			// 누락된 블록 요청
+			// Request missing blocks
 			peers := app.P2PService.GetPeers()
 			if len(peers) > 0 {
 				if err := app.P2PService.RequestBlocks(peers[0], currentHeight+1, block.Header.Height-1); err != nil {
@@ -237,7 +237,7 @@ func New(configPath string) (*App, error) {
 			return
 		}
 
-		// 블록 검증 및 추가
+		// Validate and add block
 		logger.Debug("[BlockHandler] Validating block height=", block.Header.Height)
 		if err := app.BlockChain.ValidateBlock(*block); err != nil {
 			logger.Error("[BlockHandler] Invalid received block height=", block.Header.Height, ": ", err)
@@ -252,19 +252,19 @@ func New(configPath string) (*App, error) {
 		logger.Debug("[BlockHandler] Block ", block.Header.Height, " added successfully")
 
 		logger.Info("[BlockHandler] Block synced from peer: height=", block.Header.Height)
-		// BFT: 컨센서스 높이 동기화 - 블록 수신 시 다음 높이로 업데이트
+		// BFT: Sync consensus height - Update to next height on block receipt
 		if app.Consensus != nil {
 			app.Consensus.UpdateHeight(block.Header.Height + 1)
 		}
 
-		// 다른 피어들에게 재브로드캐스트 (gossip)
+		// Rebroadcast to other peers (gossip)
 		if app.P2PService != nil {
 			if err := app.P2PService.BroadcastBlock(block); err != nil {
 				logger.Debug("[BlockHandler] Failed to rebroadcast block: ", err)
 			}
 		}
 
-		// 대기 중인 다음 블록 처리
+		// Process pending next block
 		for {
 			pendingMu.Lock()
 			nextHeight := block.Header.Height + 1
@@ -289,7 +289,7 @@ func New(configPath string) (*App, error) {
 			}
 
 			logger.Debug("[BlockHandler] Pending block added: height=", nextBlock.Header.Height)
-			// BFT: 컨센서스 높이 동기화
+			// BFT: Sync consensus height
 			if app.Consensus != nil {
 				app.Consensus.UpdateHeight(nextBlock.Header.Height + 1)
 			}
@@ -302,7 +302,7 @@ func New(configPath string) (*App, error) {
 }
 
 func (p *App) NewRest() error {
-	// REST API 서버 시작
+	// Start REST API server
 	if err := p.restServer.Start(); err != nil {
 		return fmt.Errorf("failed to start REST API server: %w", err)
 	}

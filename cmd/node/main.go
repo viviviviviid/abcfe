@@ -17,13 +17,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// 버전 정보 (Makefile에서 주입됨)
+// Version info (Injected from Makefile)
 var (
 	Version   = "dev"
 	BuildTime = "unknown"
 )
 
-// pid 관리 파일 - 사용자 홈 디렉토리 사용
+// PID file management - Use user home directory
 func getPidFilePath() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -49,7 +49,7 @@ func main() {
 		},
 	}
 
-	// 글로벌 플래그 등록
+	// Register global flags
 	rootCmd.PersistentFlags().StringVarP(&configFile, "config", "c", "", "Path to config file")
 
 	rootCmd.AddCommand(nodeCmd())
@@ -126,7 +126,7 @@ func runNode() {
 	application.SigHandler()
 	logger.Info("Node start.")
 
-	// REST API, P2P, Consensus 모두 시작
+	// Start all services: REST API, P2P, Consensus
 	if err := application.StartAll(); err != nil {
 		logger.Error("Failed to start services:", err)
 		application.Terminate()
@@ -137,25 +137,25 @@ func runNode() {
 	logger.Info("Node terminated.")
 }
 
-// 데몬으로 시작 - logger 에러 처리 개선
+// Start as daemon - improved logger error handling
 func runNodeDaemon(pidFilePath string) {
-	// 환경변수로 내부 실행인지 확인 (무한 재귀 방지)
+	// Check internal execution via env var (prevent infinite recursion)
 	if os.Getenv("ABCFE_DAEMON_CHILD") == "1" {
-		// 실제 노드 실행 (자식 프로세스)
+		// Execute actual node (Child process)
 		runNode()
 		return
 	}
 
-	// 이미 실행 중인지 확인
+	// Check if already running
 	if isRunning(pidFilePath) {
 		fmt.Println("Node is already running")
 		return
 	}
 
-	// 현재 실행 파일 경로 가져오기
+	// Get current executable path
 	executable, err := os.Executable()
 	if err != nil {
-		// logger가 초기화되지 않았을 수 있으므로 fmt 사용
+		// Use fmt as logger might not be initialized
 		fmt.Printf("Failed to get executable path: %v\n", err)
 		os.Exit(1)
 	}
@@ -163,23 +163,23 @@ func runNodeDaemon(pidFilePath string) {
 	cmd := exec.Command(executable, "node", "start")
 	cmd.Env = append(os.Environ(), "ABCFE_DAEMON_CHILD=1")
 
-	// 표준 입출력을 null로 리다이렉트 (완전한 데몬화)
+	// Redirect standard I/O to null (Complete daemonization)
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	cmd.Stdin = nil
 
-	// 새로운 프로세스 그룹으로 시작
+	// Start in a new process group
 	cmd.SysProcAttr = &syscall.SysProcAttr{
 		Setpgid: true,
 	}
 
-	// 백그라운드 프로세스 시작
+	// Start background process
 	if err := cmd.Start(); err != nil {
 		fmt.Printf("Failed to start daemon: %v\n", err)
 		os.Exit(1)
 	}
 
-	// PID 파일 생성
+	// Create PID file
 	if err := writePidFile(pidFilePath, cmd.Process.Pid); err != nil {
 		fmt.Printf("Failed to write PID file: %v\n", err)
 		cmd.Process.Kill()
@@ -188,7 +188,7 @@ func runNodeDaemon(pidFilePath string) {
 
 	fmt.Printf("Node started as daemon with PID %d\n", cmd.Process.Pid)
 
-	// 부모 프로세스는 여기서 종료
+	// Parent process exits here
 	os.Exit(0)
 }
 
@@ -206,7 +206,7 @@ func stopDaemon(pidFilePath string) {
 		return
 	}
 
-	// SIGTERM 신호 전송
+	// Send SIGTERM signal
 	if err := process.Signal(syscall.SIGTERM); err != nil {
 		fmt.Printf("Failed to stop process: %v\n", err)
 		return
@@ -214,7 +214,7 @@ func stopDaemon(pidFilePath string) {
 
 	fmt.Printf("Stopping node (PID: %d)...\n", pid)
 
-	// PID 파일 제거
+	// Remove PID file
 	removePidFile(pidFilePath)
 }
 
@@ -222,18 +222,18 @@ func restartDaemon(pidFilePath string) {
 	fmt.Println("Restarting node...")
 	stopDaemon(pidFilePath)
 
-	// 잠시 대기
+	// Wait briefly
 	ctx, cancel := context.WithTimeout(context.Background(), 5*1000000000) // 5초
 	defer cancel()
 
 	select {
 	case <-ctx.Done():
-		// 타임아웃 후 다시 시작
+		// Restart after timeout
 		runNodeDaemon(pidFilePath)
 	}
 }
 
-// 상태 확인
+// Check status
 func showStatus(pidFilePath string) {
 	fmt.Printf("PID file path: %s\n", pidFilePath)
 
@@ -243,7 +243,7 @@ func showStatus(pidFilePath string) {
 	} else {
 		fmt.Println("Node is not running")
 
-		// PID 파일이 존재하는지 확인
+		// Check if PID file exists
 		if _, err := os.Stat(pidFilePath); err == nil {
 			fmt.Println("PID file exists but process is not running - cleaning up")
 			removePidFile(pidFilePath)
@@ -251,7 +251,7 @@ func showStatus(pidFilePath string) {
 	}
 }
 
-// 실행 중인지 확인
+// Check if running
 func isRunning(pidFilePath string) bool {
 	pid, err := readPidFile(pidFilePath)
 	if err != nil {
@@ -263,12 +263,12 @@ func isRunning(pidFilePath string) bool {
 		return false
 	}
 
-	// 프로세스가 실제로 살아있는지 확인 (Unix/Linux에서)
+	// Check if process is actually alive (Unix/Linux)
 	err = process.Signal(syscall.Signal(0))
 	return err == nil
 }
 
-// PID 파일 읽기
+// Read PID file
 func readPidFile(pidFilePath string) (int, error) {
 	data, err := os.ReadFile(pidFilePath)
 	if err != nil {
@@ -283,9 +283,9 @@ func readPidFile(pidFilePath string) (int, error) {
 	return pid, nil
 }
 
-// PID 파일 쓰기
+// Write PID file
 func writePidFile(pidFilePath string, pid int) error {
-	// 디렉토리가 존재하지 않으면 생성
+	// Create directory if not exists
 	dir := filepath.Dir(pidFilePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -294,14 +294,14 @@ func writePidFile(pidFilePath string, pid int) error {
 	return os.WriteFile(pidFilePath, []byte(strconv.Itoa(pid)), 0644)
 }
 
-// PID 파일 제거
+// Remove PID file
 func removePidFile(pidFilePath string) {
 	os.Remove(pidFilePath)
 }
 
-// 개선된 runNode 함수 - 신호 처리 포함
+// Improved runNode function - includes signal handling
 func runNodeWithSignalHandling() {
-	// 신호 채널 생성
+	// Create signal channel
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
@@ -314,22 +314,22 @@ func runNodeWithSignalHandling() {
 	application.SigHandler()
 	logger.Info("Node start.")
 
-	// REST API, P2P, Consensus 모두 시작
+	// Start all services: REST API, P2P, Consensus
 	if err := application.StartAll(); err != nil {
 		logger.Error("Failed to start services:", err)
 		application.Terminate()
 		os.Exit(1)
 	}
 
-	// 고루틴에서 신호 대기
+	// Wait for signal in goroutine
 	go func() {
 		sig := <-sigChan
 		logger.Info("Received signal:", sig)
 
-		// 정리 작업
+		// Cleanup task
 		application.Terminate()
 
-		// PID 파일 제거 (데몬 모드인 경우)
+		// Remove PID file (if in daemon mode)
 		removePidFile(pidFile)
 
 		os.Exit(0)
@@ -339,7 +339,7 @@ func runNodeWithSignalHandling() {
 	logger.Info("Node terminated.")
 }
 
-// 지갑 디렉토리 기본 경로
+// Default wallet directory path
 func getDefaultWalletDir() string {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -357,10 +357,10 @@ func walletCmd() *cobra.Command {
 		Long:  `Commands for managing wallets, accounts, and keys.`,
 	}
 
-	// 지갑 디렉토리 플래그
+	// Wallet directory flag
 	cmd.PersistentFlags().StringVarP(&walletDir, "wallet-dir", "w", getDefaultWalletDir(), "Wallet directory path")
 
-	// 하위 명령어 추가
+	// Add subcommands
 	cmd.AddCommand(walletCreateCmd())
 	cmd.AddCommand(walletRestoreCmd())
 	cmd.AddCommand(walletListCmd())
@@ -370,7 +370,7 @@ func walletCmd() *cobra.Command {
 	return cmd
 }
 
-// 새 지갑 생성
+// Create new wallet
 func walletCreateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "create",
@@ -378,7 +378,7 @@ func walletCreateCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			wm := wallet.NewWalletManager(walletDir)
 
-			// 기존 지갑 확인
+			// Check existing wallet
 			walletFile := filepath.Join(walletDir, "wallet.json")
 			if _, err := os.Stat(walletFile); err == nil {
 				fmt.Println("Wallet already exists at:", walletFile)
@@ -386,14 +386,14 @@ func walletCreateCmd() *cobra.Command {
 				return
 			}
 
-			// 새 지갑 생성
+			// Create new wallet
 			mnemonicWallet, err := wm.CreateWallet()
 			if err != nil {
 				fmt.Printf("Failed to create wallet: %v\n", err)
 				return
 			}
 
-			// 지갑 저장
+			// Save wallet
 			if err := wm.SaveWallet(); err != nil {
 				fmt.Printf("Failed to save wallet: %v\n", err)
 				return
@@ -418,7 +418,7 @@ func walletCreateCmd() *cobra.Command {
 	}
 }
 
-// 니모닉으로 지갑 복구
+// Restore wallet from mnemonic
 func walletRestoreCmd() *cobra.Command {
 	var mnemonic string
 
@@ -433,7 +433,7 @@ func walletRestoreCmd() *cobra.Command {
 
 			wm := wallet.NewWalletManager(walletDir)
 
-			// 기존 지갑 확인
+			// Check existing wallet
 			walletFile := filepath.Join(walletDir, "wallet.json")
 			if _, err := os.Stat(walletFile); err == nil {
 				fmt.Println("Wallet already exists at:", walletFile)
@@ -441,14 +441,14 @@ func walletRestoreCmd() *cobra.Command {
 				return
 			}
 
-			// 지갑 복구
+			// Restore wallet
 			mnemonicWallet, err := wm.RestoreWallet(mnemonic)
 			if err != nil {
 				fmt.Printf("Failed to restore wallet: %v\n", err)
 				return
 			}
 
-			// 지갑 저장
+			// Save wallet
 			if err := wm.SaveWallet(); err != nil {
 				fmt.Printf("Failed to save wallet: %v\n", err)
 				return
@@ -470,7 +470,7 @@ func walletRestoreCmd() *cobra.Command {
 	return cmd
 }
 
-// 계정 목록 표시
+// List accounts
 func walletListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
@@ -506,7 +506,7 @@ func walletListCmd() *cobra.Command {
 	}
 }
 
-// 새 계정 추가
+// Add new account
 func walletAddAccountCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "add-account",
@@ -526,7 +526,7 @@ func walletAddAccountCmd() *cobra.Command {
 				return
 			}
 
-			// 지갑 저장
+			// Save wallet
 			if err := wm.SaveWallet(); err != nil {
 				fmt.Printf("Failed to save wallet: %v\n", err)
 				return
@@ -541,7 +541,7 @@ func walletAddAccountCmd() *cobra.Command {
 	}
 }
 
-// 니모닉 표시
+// Show mnemonic
 func walletShowMnemonicCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show-mnemonic",

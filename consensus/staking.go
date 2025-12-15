@@ -9,23 +9,23 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-// Staker 스테이커 정보
+// Staker information
 type Staker struct {
 	Address   prt.Address `json:"address"`
-	PublicKey []byte      `json:"publicKey"` // 검증자 신원 확인용 공개키
+	PublicKey []byte      `json:"publicKey"` // Public key for validator identity verification
 	Amount    uint64      `json:"amount"`
-	StartTime int64       `json:"startTime"` // 스테이킹 시작 시간 (unix)
-	EndTime   int64       `json:"endTime"`   // 언스테이킹 예정 시간 (0이면 무기한)
+	StartTime int64       `json:"startTime"` // Staking start time (unix)
+	EndTime   int64       `json:"endTime"`   // Expected unstaking time (0 if indefinite)
 	IsActive  bool        `json:"isActive"`
 }
 
-// StakerSet 전체 스테이커 목록
+// StakerSet list of all stakers
 type StakerSet struct {
 	Stakers     map[string]*Staker `json:"stakers"` // key: address string
 	TotalStaked uint64             `json:"totalStaked"`
 }
 
-// NewStakerSet 새 스테이커셋 생성
+// NewStakerSet creates a new staker set
 func NewStakerSet() *StakerSet {
 	return &StakerSet{
 		Stakers:     make(map[string]*Staker),
@@ -33,14 +33,14 @@ func NewStakerSet() *StakerSet {
 	}
 }
 
-// AddStaker 스테이커 추가
+// AddStaker adds a staker
 func (s *StakerSet) AddStaker(address prt.Address, amount uint64, publicKey []byte) error {
 	addrStr := utils.AddressToString(address)
 
 	if existing, exists := s.Stakers[addrStr]; exists {
-		// 기존 스테이커면 금액 추가
+		// Add amount if existing staker
 		existing.Amount += amount
-		// 공개키가 없으면 업데이트
+		// Update public key if missing
 		if len(existing.PublicKey) == 0 && len(publicKey) > 0 {
 			existing.PublicKey = publicKey
 		}
@@ -48,7 +48,7 @@ func (s *StakerSet) AddStaker(address prt.Address, amount uint64, publicKey []by
 		return nil
 	}
 
-	// 새 스테이커
+	// New staker
 	s.Stakers[addrStr] = &Staker{
 		Address:   address,
 		PublicKey: publicKey,
@@ -62,7 +62,7 @@ func (s *StakerSet) AddStaker(address prt.Address, amount uint64, publicKey []by
 	return nil
 }
 
-// RemoveStaker 스테이커 제거 (언스테이킹)
+// RemoveStaker removes a staker (unstaking)
 func (s *StakerSet) RemoveStaker(address prt.Address, amount uint64) error {
 	addrStr := utils.AddressToString(address)
 
@@ -78,7 +78,7 @@ func (s *StakerSet) RemoveStaker(address prt.Address, amount uint64) error {
 	staker.Amount -= amount
 	s.TotalStaked -= amount
 
-	// 금액이 0이면 비활성화
+	// Deactivate if amount is 0
 	if staker.Amount == 0 {
 		staker.IsActive = false
 	}
@@ -86,13 +86,13 @@ func (s *StakerSet) RemoveStaker(address prt.Address, amount uint64) error {
 	return nil
 }
 
-// GetStaker 스테이커 조회
+// GetStaker retrieves a staker
 func (s *StakerSet) GetStaker(address prt.Address) *Staker {
 	addrStr := utils.AddressToString(address)
 	return s.Stakers[addrStr]
 }
 
-// GetActiveStakers 활성 스테이커 목록
+// GetActiveStakers returns list of active stakers
 func (s *StakerSet) GetActiveStakers() []*Staker {
 	var active []*Staker
 	for _, staker := range s.Stakers {
@@ -103,7 +103,7 @@ func (s *StakerSet) GetActiveStakers() []*Staker {
 	return active
 }
 
-// SaveStakerSet DB에 스테이커셋 저장
+// SaveStakerSet saves staker set to DB
 func SaveStakerSet(db *leveldb.DB, stakerSet *StakerSet) error {
 	key := []byte(prt.PrefixStakerInfo)
 	data, err := utils.SerializeData(stakerSet, utils.SerializationFormatGob)
@@ -118,7 +118,7 @@ func SaveStakerSet(db *leveldb.DB, stakerSet *StakerSet) error {
 	return nil
 }
 
-// LoadStakerSet DB에서 스테이커셋 로드
+// LoadStakerSet loads staker set from DB
 func LoadStakerSet(db *leveldb.DB) (*StakerSet, error) {
 	key := []byte(prt.PrefixStakerInfo)
 	data, err := db.Get(key, nil)
@@ -137,7 +137,7 @@ func LoadStakerSet(db *leveldb.DB) (*StakerSet, error) {
 	return &stakerSet, nil
 }
 
-// GetStakers 스테이커 주소 목록 (하위 호환)
+// GetStakers returns list of staker addresses (backward compatibility)
 func GetStakers(db *leveldb.DB) ([]string, error) {
 	stakerSet, err := LoadStakerSet(db)
 	if err != nil {

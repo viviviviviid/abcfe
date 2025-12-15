@@ -16,7 +16,7 @@ func InitDB(cfg *config.Config) (*leveldb.DB, error) {
 	dbName := fmt.Sprintf("leveldb_%d.db", cfg.Common.Port)
 	dbPath := fmt.Sprintf("%s%s", cfg.DB.Path, dbName)
 
-	// DB 디렉토리가 없으면 생성
+	// Create DB directory if it does not exist
 	db, err := leveldb.OpenFile(dbPath, nil)
 	if err != nil {
 		log.Error("Failed to open db: ", err)

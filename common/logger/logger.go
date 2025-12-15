@@ -28,7 +28,7 @@ func InitLogger(cfg *conf.Config) error {
 	lPath := fmt.Sprintf("%s_%s.log", cfg.LogInfo.Path, now.Format("2006-01-02"))
 	cf = cfg
 
-	// -debug 플래그 확인
+	// Check -debug flag
 	hasDebugFlag := false
 	for _, arg := range os.Args {
 		if arg == "-debug" || arg == "--debug" {
@@ -37,7 +37,7 @@ func InitLogger(cfg *conf.Config) error {
 		}
 	}
 
-	// -debug 플래그가 있으면 "alpha", 없으면 "prod" (default)
+	// If -debug flag is present use "alpha", otherwise "prod" (default)
 	if hasDebugFlag {
 		cfg.Common.Level = "alpha"
 	} else {
@@ -164,7 +164,7 @@ func sendTelegramAlert(cf *conf.Config, body string) bool {
 	return true
 }
 
-// 에러 핸들링
+// Error handling
 func HandleErr(err error) {
 	if err != nil {
 		Error(err)

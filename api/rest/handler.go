@@ -31,14 +31,14 @@ func GetStatus(bc *core.BlockChain) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		status := bc.GetChainStatus()
 
-		// Genesis block hash 조회
+		// Get Genesis block hash
 		genesisHash := ""
 		if genesisBlock, err := bc.GetBlockByHeight(0); err == nil {
 			genesisHash = utils.HashToString(genesisBlock.Header.Hash)
 		}
 
-		// Network ID 조회 (config에서)
-		networkId := "abcfe-mainnet" // 기본값
+		// Get Network ID (from config)
+		networkId := "abcfe-mainnet" // default value
 
 		// Mempool size
 		mempoolSize := 0
@@ -162,7 +162,7 @@ func GetTx(bc *core.BlockChain) http.HandlerFunc {
 	}
 }
 
-// get tx response
+// get utxo response
 func GetAddressUtxo(bc *core.BlockChain) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
@@ -233,13 +233,13 @@ func SubmitTransferTx(bc *core.BlockChain) http.HandlerFunc {
 			return
 		}
 
-		// 수수료가 0이면 최소 수수료 적용
+		// If fee is 0, apply minimum fee
 		fee := req.Fee
 		if fee == 0 {
 			fee = bc.GetMinFee()
 		}
 
-		txType := core.TxTypeGeneral // 일반 트랜잭션
+		txType := core.TxTypeGeneral // General transaction
 
 		if err := bc.SubmitTx(from, to, req.Amount, fee, req.Memo, req.Data, txType); err != nil {
 			sendResp(w, http.StatusInternalServerError, nil, err)
@@ -260,13 +260,13 @@ func ComposeAndAddBlock(bc *core.BlockChain) http.HandlerFunc {
 			return
 		}
 
-		// 블록 구성 (API에서 직접 블록을 생성하는 경우는 테스트용으로, 빈 제안자 사용)
-		// 실제 운영에서는 컨센서스 엔진을 통해 블록이 생성되어야 함
+		// Compose block (Creating block directly from API is for testing, use empty proposer)
+		// In actual operation, block should be created through consensus engine
 		var emptyProposer [20]byte
 		blockTimestamp := time.Now().Unix()
 		blk := bc.SetBlock(prevHash, curHeight, emptyProposer, blockTimestamp)
 
-		// 블록 추가
+		// Add block
 		result, err := bc.AddBlock(*blk)
 		if err != nil {
 			sendResp(w, http.StatusInternalServerError, nil, err)
@@ -312,7 +312,7 @@ func formatBlockResp(block *core.Block, bc *core.BlockChain) (BlockResp, error) 
 		txDetails[i] = formatTxResp(tx, bc)
 	}
 
-	// BFT CommitSignatures 변환
+	// Convert BFT CommitSignatures
 	var commitSigs []CommitSignatureResp
 	if len(block.CommitSignatures) > 0 {
 		commitSigs = make([]CommitSignatureResp, len(block.CommitSignatures))
@@ -342,7 +342,7 @@ func formatBlockResp(block *core.Block, bc *core.BlockChain) (BlockResp, error) 
 	return response, nil
 }
 
-// get tx response (수수료 정보 포함)
+// get tx response (including fee info)
 func formatTxResp(tx *core.Transaction, bc *core.BlockChain) TxResp {
 	fee, _ := bc.CalculateTxFee(tx)
 	return TxResp{
@@ -405,7 +405,7 @@ func formatTxsResp(txs []*core.Transaction, bc *core.BlockChain) []interface{} {
 	return result
 }
 
-// SubmitSignedTx 클라이언트가 서명한 트랜잭션 제출
+// SubmitSignedTx submits client-signed transaction
 func SubmitSignedTx(bc *core.BlockChain, p2pService *p2p.P2PService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req SubmitSignedTxReq
@@ -414,29 +414,29 @@ func SubmitSignedTx(bc *core.BlockChain, p2pService *p2p.P2PService) http.Handle
 			return
 		}
 
-		// 요청을 core.Transaction으로 변환
+		// Convert request to core.Transaction
 		tx, err := convertSignedTxReqToTx(&req)
 		if err != nil {
 			sendResp(w, http.StatusBadRequest, nil, err)
 			return
 		}
 
-		// 서명 검증
+		// Verify signature
 		if err := bc.ValidateTxSignatures(tx); err != nil {
 			sendResp(w, http.StatusBadRequest, nil, fmt.Errorf("signature validation failed: %w", err))
 			return
 		}
 
-		// mempool에 추가
+		// Add to mempool
 		if err := bc.Mempool.NewTranaction(tx); err != nil {
 			sendResp(w, http.StatusInternalServerError, nil, err)
 			return
 		}
 
-		// P2P 네트워크에 브로드캐스트
+		// Broadcast to P2P network
 		if p2pService != nil {
 			if err := p2pService.BroadcastTx(tx); err != nil {
-				// 브로드캐스트 실패해도 로컬 멤풀에는 들어갔으므로 성공 처리하되 로그 남김
+				// Even if broadcast fails, treat as success since it's in local mempool, but log it
 				fmt.Printf("[API] Failed to broadcast tx: %v\n", err)
 			} else {
 				fmt.Printf("[API] Broadcasted tx: %s\n", utils.HashToString(tx.ID))
@@ -449,7 +449,7 @@ func SubmitSignedTx(bc *core.BlockChain, p2pService *p2p.P2PService) http.Handle
 	}
 }
 
-// SendTxWithWallet 서버 지갑을 사용하여 서명 후 전송
+// SendTxWithWallet signs with server wallet and sends
 func SendTxWithWallet(bc *core.BlockChain, wm *wallet.WalletManager, p2pService *p2p.P2PService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req SendTxReq
@@ -463,7 +463,7 @@ func SendTxWithWallet(bc *core.BlockChain, wm *wallet.WalletManager, p2pService 
 			return
 		}
 
-		// 지갑 계정 가져오기
+		// Get wallet accounts
 		accounts := wm.Wallet.Accounts
 		if req.AccountIndex < 0 || req.AccountIndex >= len(accounts) {
 			sendResp(w, http.StatusBadRequest, nil, fmt.Errorf("invalid account index: %d", req.AccountIndex))
@@ -479,29 +479,29 @@ func SendTxWithWallet(bc *core.BlockChain, wm *wallet.WalletManager, p2pService 
 			return
 		}
 
-		// 수수료가 0이면 최소 수수료 적용
+		// If fee is 0, apply minimum fee
 		fee := req.Fee
 		if fee == 0 {
 			fee = bc.GetMinFee()
 		}
 
-		// 서명된 트랜잭션 생성 (수수료 포함)
+		// Create signed transaction (including fee)
 		tx, err := bc.CreateSignedTx(from, to, req.Amount, fee, req.Memo, req.Data, core.TxTypeGeneral, account.PrivateKey, account.PublicKey)
 		if err != nil {
 			sendResp(w, http.StatusInternalServerError, nil, fmt.Errorf("failed to create signed tx: %w", err))
 			return
 		}
 
-		// mempool에 추가
+		// Add to mempool
 		if err := bc.Mempool.NewTranaction(tx); err != nil {
 			sendResp(w, http.StatusInternalServerError, nil, err)
 			return
 		}
 
-		// P2P 네트워크에 브로드캐스트
+		// Broadcast to P2P network
 		if p2pService != nil {
 			if err := p2pService.BroadcastTx(tx); err != nil {
-				// 브로드캐스트 실패해도 로컬 멤풀에는 들어갔으므로 성공 처리하되 로그 남김
+				// Even if broadcast fails, treat as success since it's in local mempool, but log it
 				fmt.Printf("[API] Failed to broadcast tx: %v\n", err)
 			} else {
 				fmt.Printf("[API] Broadcasted tx: %s\n", utils.HashToString(tx.ID))
@@ -516,7 +516,7 @@ func SendTxWithWallet(bc *core.BlockChain, wm *wallet.WalletManager, p2pService 
 	}
 }
 
-// GetWalletAccounts 지갑 계정 목록 조회
+// GetWalletAccounts gets wallet account list
 func GetWalletAccounts(wm *wallet.WalletManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if wm == nil || wm.Wallet == nil {
@@ -538,7 +538,7 @@ func GetWalletAccounts(wm *wallet.WalletManager) http.HandlerFunc {
 	}
 }
 
-// CreateNewAccount 새 계정 생성
+// CreateNewAccount creates new account
 func CreateNewAccount(wm *wallet.WalletManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if wm == nil || wm.Wallet == nil {
@@ -552,7 +552,7 @@ func CreateNewAccount(wm *wallet.WalletManager) http.HandlerFunc {
 			return
 		}
 
-		// 지갑 저장
+		// Save wallet
 		if err := wm.SaveWallet(); err != nil {
 			sendResp(w, http.StatusInternalServerError, nil, fmt.Errorf("account created but failed to save: %w", err))
 			return
@@ -566,7 +566,7 @@ func CreateNewAccount(wm *wallet.WalletManager) http.HandlerFunc {
 	}
 }
 
-// convertSignedTxReqToTx 요청을 Transaction으로 변환
+// convertSignedTxReqToTx converts request to Transaction
 func convertSignedTxReqToTx(req *SubmitSignedTxReq) (*core.Transaction, error) {
 	inputs := make([]*core.TxInput, len(req.Inputs))
 	for i, in := range req.Inputs {
@@ -616,13 +616,13 @@ func convertSignedTxReqToTx(req *SubmitSignedTxReq) (*core.Transaction, error) {
 		Data:      req.Data,
 	}
 
-	// TX ID 계산
+	// Calculate TX ID
 	tx.ID = utils.Hash(tx)
 
 	return tx, nil
 }
 
-// GetWSStatus WebSocket 연결 상태 조회
+// GetWSStatus gets WebSocket connection status
 func GetWSStatus(hub *api.WSHub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if hub == nil {
@@ -639,11 +639,11 @@ func GetWSStatus(hub *api.WSHub) http.HandlerFunc {
 	}
 }
 
-// GetBlocks 블록 목록 조회 (페이지네이션)
+// GetBlocks gets block list (pagination)
 // query params: page (default 1), limit (default 10), order (asc/desc, default desc)
 func GetBlocks(bc *core.BlockChain) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// 쿼리 파라미터 파싱
+		// Parse query parameters
 		pageStr := r.URL.Query().Get("page")
 		limitStr := r.URL.Query().Get("limit")
 		order := r.URL.Query().Get("order")
@@ -670,14 +670,14 @@ func GetBlocks(bc *core.BlockChain) http.HandlerFunc {
 			return
 		}
 
-		// 페이지네이션 계산
+		// Calculate pagination
 		totalBlocks := int(latestHeight) + 1
 		totalPages := (totalBlocks + limit - 1) / limit
 		offset := (page - 1) * limit
 
 		var blocks []BlockResp
 		if order == "desc" {
-			// 최신 블록부터
+			// From latest block
 			startHeight := int(latestHeight) - offset
 			for i := 0; i < limit && startHeight-i >= 0; i++ {
 				block, err := bc.GetBlockByHeight(uint64(startHeight - i))
@@ -688,7 +688,7 @@ func GetBlocks(bc *core.BlockChain) http.HandlerFunc {
 				blocks = append(blocks, blockResp)
 			}
 		} else {
-			// 오래된 블록부터
+			// From oldest block
 			startHeight := offset
 			for i := 0; i < limit && startHeight+i <= int(latestHeight); i++ {
 				block, err := bc.GetBlockByHeight(uint64(startHeight + i))
@@ -712,17 +712,17 @@ func GetBlocks(bc *core.BlockChain) http.HandlerFunc {
 	}
 }
 
-// GetNetworkStats 네트워크 통계 조회
+// GetNetworkStats gets network statistics
 func GetNetworkStats(bc *core.BlockChain, hub *api.WSHub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		latestHeight, _ := bc.GetLatestHeight()
 		latestHash, _ := bc.GetLatestBlockHash()
 
-		// mempool 정보
+		// Mempool info
 		mempoolTxs := bc.Mempool.GetTxs()
 		mempoolCount := len(mempoolTxs)
 
-		// WebSocket 연결 수
+		// WebSocket connection count
 		wsClients := 0
 		if hub != nil {
 			wsClients = hub.GetClientCount()
@@ -745,7 +745,7 @@ func GetNetworkStats(bc *core.BlockChain, hub *api.WSHub) http.HandlerFunc {
 	}
 }
 
-// GetConsensusStatus 컨센서스 상태 조회
+// GetConsensusStatus gets consensus status
 func GetConsensusStatus(cons *consensus.Consensus) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if cons == nil {
@@ -753,17 +753,17 @@ func GetConsensusStatus(cons *consensus.Consensus) http.HandlerFunc {
 			return
 		}
 
-		// 현재 제안자 정보
+		// Current proposer info
 		var proposerAddr string
 		if proposer := cons.GetCurrentProposer(); proposer != nil {
 			proposerAddr = utils.AddressToString(proposer.Address)
 		}
 
-		// 검증자 목록 구성 (문서 형식에 맞춤)
+		// Configure validator list (match document format)
 		validators := []map[string]interface{}{}
 		votingPower := make(map[string]uint64)
 
-		// ValidatorSet에서 활성 검증자 조회
+		// Get active validators from ValidatorSet
 		if cons.ValidatorSet != nil {
 			for addrStr, validator := range cons.ValidatorSet.Validators {
 				if validator.IsActive {
@@ -790,7 +790,7 @@ func GetConsensusStatus(cons *consensus.Consensus) http.HandlerFunc {
 	}
 }
 
-// GetP2PPeers P2P 피어 목록 조회
+// GetP2PPeers gets P2P peer list
 func GetP2PPeers(p2pService *p2p.P2PService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if p2pService == nil {

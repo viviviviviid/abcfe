@@ -1,43 +1,43 @@
 package protocol
 
 const (
-	// 블록체인 설정 정보
+	// Blockchain configuration info
 	PrefixNetworkConfig = "net:config"
 
-	// 메타데이터 관련 접두사
-	PrefixMeta          = "meta:"       // 메타데이터 키
-	PrefixMetaHeight    = "meta:height" // 최신 블록 높이
-	PrefixMetaBlockHash = "meta:hash"   // 최신 블록 해시
+	// Metadata related prefixes
+	PrefixMeta          = "meta:"       // Metadata key
+	PrefixMetaHeight    = "meta:height" // Latest block height
+	PrefixMetaBlockHash = "meta:hash"   // Latest block hash
 
-	// 블록 관련 접두사
-	PrefixBlock         = "blk:"     // blk:해시 = 블록 데이터
-	PrefixBlockByHeight = "blk:h:"   // blk:h:높이 = 블록 해시
-	PrefixBlockTxs      = "blk:txs:" // blk:txs:블록해시:인덱스 = 트랜잭션 해시
+	// Block related prefixes
+	PrefixBlock         = "blk:"     // blk:Hash = Block data
+	PrefixBlockByHeight = "blk:h:"   // blk:h:Height = Block hash
+	PrefixBlockTxs      = "blk:txs:" // blk:txs:BlockHash:Index = Transaction hash
 
-	// 트랜잭션 관련 접두사
-	PrefixTxs      = "tx:"        // tx:트랜잭션해시 = 트랜잭션 데이터
-	PrefixTxStatus = "tx:status:" // tx:status:해시 = 상태
-	PrefixTxBlock  = "tx:blk:"    // tx:block:트랜잭션해시 = 블록해시
+	// Transaction related prefixes
+	PrefixTxs      = "tx:"        // tx:TxHash = Transaction data
+	PrefixTxStatus = "tx:status:" // tx:status:Hash = Status
+	PrefixTxBlock  = "tx:blk:"    // tx:block:TxHash = Block hash
 
-	// [사용패턴 1] tx:in:트랜잭션해시:인덱스 = 특정 input 데이터
-	// [사용패턴 2] tx:in:트랜잭션해시 = 모든 input 데이터 목록
+	// [Usage pattern 1] tx:in:TxHash:Index = Specific input data
+	// [Usage pattern 2] tx:in:TxHash = All input data list
 	PrefixTxIn = "tx:in:"
 
-	// [사용패턴 1] tx:out:트랜잭션해시:인덱스 = 특정 output 데이터
-	// [사용패턴 2] tx:out:트랜잭션해시 = 모든 output 데이터 목록
+	// [Usage pattern 1] tx:out:TxHash:Index = Specific output data
+	// [Usage pattern 2] tx:out:TxHash = All output data list
 	PrefixTxOut = "tx:out:"
 
-	// UTXO 관련 접두사
-	PrefixUtxo        = "utxo:"      // utxo:트랜잭션해시:인덱스 = UTXO 데이터
-	PrefixUtxoList    = "utxo:addr:" // utxo:addr:주소 = UTXO 키 배열
-	PrefixUtxoBalance = "utxo:bal:"  // utxo:bal:주소 = 잔액
+	// UTXO related prefixes
+	PrefixUtxo        = "utxo:"      // utxo:TxHash:Index = UTXO data
+	PrefixUtxoList    = "utxo:addr:" // utxo:addr:Address = UTXO key array
+	PrefixUtxoBalance = "utxo:bal:"  // utxo:bal:Address = Balance
 
-	// 계정 관련 접두사
-	PrefixAddress         = "addr:"      // addr:계정주소 = 계정 데이터
-	PrefixAddressTxs      = "addr:txs:"  // addr:txs:계정주소 = 트랜잭션 해시 json-array
-	PrefixAddressReceived = "addr:recv:" // addr:recv:계정주소:인덱스 = []{트랜잭션 해시: index} (수신)
-	PrefixAddressSent     = "addr:sent:" // addr:sent:계정주소:인덱스 = []트랜잭션 해시 (발신)
+	// Account related prefixes
+	PrefixAddress         = "addr:"      // addr:AccountAddress = Account data
+	PrefixAddressTxs      = "addr:txs:"  // addr:txs:AccountAddress = Transaction hash json-array
+	PrefixAddressReceived = "addr:recv:" // addr:recv:AccountAddress:Index = []{TxHash: index} (Received)
+	PrefixAddressSent     = "addr:sent:" // addr:sent:AccountAddress:Index = []TxHash (Sent)
 
-	// 컨센서스 관련 접두사
-	PrefixStakerInfo = "staker:" // 지갑 주소 - 스테이킹 정보
+	// Consensus related prefixes
+	PrefixStakerInfo = "staker:" // Wallet address - Staking info
 )

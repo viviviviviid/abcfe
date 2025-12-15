@@ -11,33 +11,33 @@ import (
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
 
-// 트랜잭션 구조체
+// Transaction struct
 type Transaction struct {
-	Version   string   `json:"version"`   // 트랜잭션 버전
-	ID        prt.Hash `json:"id"`        // 트랜잭션 ID (해시)
-	Timestamp int64    `json:"timestamp"` // 트랜잭션 생성 시간
+	Version   string   `json:"version"`   // Transaction version
+	ID        prt.Hash `json:"id"`        // Transaction ID (hash)
+	Timestamp int64    `json:"timestamp"` // Transaction creation time
 
-	Inputs  []*TxInput  `json:"inputs"`  // 트랜잭션 입력
-	Outputs []*TxOutput `json:"outputs"` // 트랜잭션 출력 // 잔돈 때문에 단일 출력이 아닌 다중 출력이어야함
+	Inputs  []*TxInput  `json:"inputs"`  // Transaction inputs
+	Outputs []*TxOutput `json:"outputs"` // Transaction outputs // Must be multiple outputs for change
 
-	Memo string `json:"memo"` // 트랜잭션 메모 (inputData 대체)
-	Data []byte `json:"data"` // 임의 데이터 (스마트 컨트랙트 호출 등)
+	Memo string `json:"memo"` // Transaction memo (replaces inputData)
+	Data []byte `json:"data"` // Arbitrary data (smart contract calls, etc.)
 	// Status // TODO
 	// Signature // TODO
 }
 
 type TxInput struct {
-	TxID        prt.Hash      `json:"txId"`        // 참조 트랜잭션 ID
-	OutputIndex uint64        `json:"outputIndex"` // 참조 출력 인덱스
-	Signature   prt.Signature `json:"signature"`   // 서명
-	PublicKey   []byte        `json:"publicKey"`   // 공개키
-	// Sequence    uint64        `json:"sequence"`    // 시퀀스 번호 (RBF 지원)
+	TxID        prt.Hash      `json:"txId"`        // Referenced transaction ID
+	OutputIndex uint64        `json:"outputIndex"` // Referenced output index
+	Signature   prt.Signature `json:"signature"`   // Signature
+	PublicKey   []byte        `json:"publicKey"`   // Public key
+	// Sequence    uint64        `json:"sequence"`    // Sequence number (RBF support)
 }
 
 type TxOutput struct {
-	Address prt.Address `json:"address"` // 수신자 주소
-	Amount  uint64      `json:"amount"`  // 금액 (int에서 uint64로 변경)
-	TxType  uint8       `json:"txType"`  // 스크립트 타입 (일반/스테이킹/기타)
+	Address prt.Address `json:"address"` // Receiver address
+	Amount  uint64      `json:"amount"`  // Amount (changed to uint64)
+	TxType  uint8       `json:"txType"`  // Script type (General/Staking/Etc)
 }
 
 // Tx Input and Output pair
@@ -52,7 +52,7 @@ func (p *BlockChain) SetTransferTx(from prt.Address, to prt.Address, amount uint
 		return nil, err
 	}
 
-	// 수수료 포함한 총 필요 금액 검증
+	// Verify total required amount including fee
 	requiredAmount := amount + fee
 	if p.CalBalanceUtxo(utxos) < requiredAmount {
 		return &Transaction{}, fmt.Errorf("not enough balance: need %d (amount) + %d (fee) = %d", amount, fee, requiredAmount)
@@ -63,8 +63,8 @@ func (p *BlockChain) SetTransferTx(from prt.Address, to prt.Address, amount uint
 		return &Transaction{}, err
 	}
 
-	// GOB 역직렬화 후 nil이 빈 슬라이스로 바뀌는 문제 해결
-	// 트랜잭션 생성 시 nil을 빈 슬라이스로 정규화하여 해시 일관성 유지
+	// Resolve nil becoming empty slice after GOB deserialization
+	// Normalize nil to empty slice when creating transaction to maintain hash consistency
 	normalizedData := data
 	if normalizedData == nil {
 		normalizedData = []byte{}
@@ -89,37 +89,37 @@ func (p *BlockChain) SetTransferTx(from prt.Address, to prt.Address, amount uint
 	return &tx, nil
 }
 
-// tx input과 output을 구성 (fee 포함)
+// Configure tx input and output (including fee)
 func (p *BlockChain) setTxIOPair(utxos []*UTXO, from prt.Address, to prt.Address, amount uint64, fee uint64, txType uint8) (*TxIOPair, error) {
 	var txInAndOut TxIOPair
 	var total uint64
 
-	// 수수료 포함한 총 필요 금액
+	// Total required amount including fee
 	requiredAmount := amount + fee
 
 	// set tx in
 	for _, utxo := range utxos {
-		// 수수료 포함한 금액을 충족하면 중단
+		// Stop if amount including fee is satisfied
 		if total >= requiredAmount {
 			break
 		}
-		// ! pubkey는 전처리 시그니처 후처리 필요
+		// ! Pubkey needs pre-processing, signature needs post-processing
 		txIn := p.setTxInput(utxo.TxId, utxo.OutputIndex, prt.Signature{}, nil)
 		txInAndOut.TxIns = append(txInAndOut.TxIns, txIn)
 
 		total += utxo.TxOut.Amount
 	}
 
-	// utxo 탈탈 털었는데도 돈이 부족하다면 에러
+	// Error if not enough funds even after using all UTXOs
 	if total < requiredAmount {
 		return nil, fmt.Errorf("not enough balance: required %d (amount %d + fee %d), have %d", requiredAmount, amount, fee, total)
 	}
 
-	// set tx out - 수신자에게 보내는 금액
+	// set tx out - Amount to receiver
 	txOut := p.setTxOutput(to, amount, txType)
 	txInAndOut.TxOuts = append(txInAndOut.TxOuts, txOut)
 
-	// 거슬러줘야한다면 잔액 반환 (수수료는 Output에 포함되지 않음 = 암묵적 수수료)
+	// Return change if needed (Fee is not included in Output = Implicit fee)
 	if total > requiredAmount {
 		changeOut := total - requiredAmount // total - amount - fee
 		txOut := p.setTxOutput(from, changeOut, txType)
@@ -130,8 +130,8 @@ func (p *BlockChain) setTxIOPair(utxos []*UTXO, from prt.Address, to prt.Address
 }
 
 func (p *BlockChain) setTxInput(txOutID prt.Hash, txOutIdx uint64, sig prt.Signature, pubKey []byte) *TxInput {
-	// GOB 역직렬화 후 nil이 빈 슬라이스로 바뀌는 문제 해결
-	// nil을 빈 슬라이스로 정규화하여 해시 일관성 유지
+	// Resolve nil becoming empty slice after GOB deserialization
+	// Normalize nil to empty slice to maintain hash consistency
 	normalizedPubKey := pubKey
 	if normalizedPubKey == nil {
 		normalizedPubKey = []byte{}
@@ -304,31 +304,31 @@ func (p *BlockChain) SubmitTx(from, to prt.Address, amount uint64, fee uint64, m
 
 func calculateMerkleRoot(txs []*Transaction) prt.Hash {
 	if len(txs) == 0 {
-		return prt.Hash{} // 빈 해시 반환
+		return prt.Hash{} // Return empty hash
 	}
 
-	// 각 트랜잭션의 ID(해시)를 사용
-	// TX.ID는 이미 트랜잭션의 해시이므로 직접 사용
+	// Use ID (hash) of each transaction
+	// TX.ID is already transaction hash, so use directly
 	hashes := make([]prt.Hash, len(txs))
 	for i, tx := range txs {
 		hashes[i] = tx.ID
 	}
 
-	// 머클 트리 계산 // 재귀 호출
+	// Calculate Merkle tree // Recursive call
 	return buildMerkleTree(hashes)
 }
 
 func buildMerkleTree(hashes []prt.Hash) prt.Hash {
 	if len(hashes) == 1 {
-		return hashes[0] // 루트에 도달
+		return hashes[0] // Reached root
 	}
 
-	// 짝수 개로 맞추기 => 홀수 개면 마지막 해시를 복제
+	// Make even count => duplicate last hash if odd
 	if len(hashes)%2 != 0 {
 		hashes = append(hashes, hashes[len(hashes)-1])
 	}
 
-	// 다음 레벨 계산
+	// Calculate next level
 	nextLevel := make([]prt.Hash, len(hashes)/2)
 	for i := 0; i < len(hashes); i += 2 {
 		combined := append(hashes[i][:], hashes[i+1][:]...)
@@ -338,21 +338,21 @@ func buildMerkleTree(hashes []prt.Hash) prt.Hash {
 	return buildMerkleTree(nextLevel)
 }
 
-// CreateSignedTx 서명된 트랜잭션 생성 (fee 포함)
+// CreateSignedTx creates signed transaction (includes fee)
 func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uint64, memo string, data []byte, txType uint8, privateKeyBytes, publicKeyBytes []byte) (*Transaction, error) {
 	utxos, err := p.GetUtxoList(from, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get UTXO list: %w", err)
 	}
 
-	// 디버깅: UTXO 목록 확인
+	// Debug: Check UTXO list
 	logger.Debug("[CreateSignedTx] from: ", utils.AddressToString(from))
 	logger.Debug("[CreateSignedTx] UTXO count: ", len(utxos))
 	for i, utxo := range utxos {
 		logger.Debug("[CreateSignedTx] UTXO[", i, "]: txId=", utils.HashToString(utxo.TxId)[:16], " amount=", utxo.TxOut.Amount, " spent=", utxo.Spent)
 	}
 
-	// 수수료 포함한 총 필요 금액
+	// Total required amount including fee
 	requiredAmount := amount + fee
 	balance := p.CalBalanceUtxo(utxos)
 	logger.Debug("[CreateSignedTx] balance: ", balance, " requiredAmount: ", requiredAmount)
@@ -360,12 +360,12 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 		return nil, fmt.Errorf("not enough balance: have %d, need %d (amount %d + fee %d)", balance, requiredAmount, amount, fee)
 	}
 
-	// TX Input/Output 구성
+	// Configure TX Input/Output
 	var txIns []*TxInput
 	var total uint64
 
-	// GOB 역직렬화 후 nil이 빈 슬라이스로 바뀌는 문제 해결
-	// nil을 빈 슬라이스로 정규화하여 해시 일관성 유지
+	// Resolve nil becoming empty slice after GOB deserialization
+	// Normalize nil to empty slice to maintain hash consistency
 	normalizedPublicKey := publicKeyBytes
 	if normalizedPublicKey == nil {
 		normalizedPublicKey = []byte{}
@@ -380,7 +380,7 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 			TxID:        utxo.TxId,
 			OutputIndex: utxo.OutputIndex,
 			PublicKey:   normalizedPublicKey,
-			// Signature는 나중에 설정
+			// Signature set later
 		}
 		txIns = append(txIns, txIn)
 		total += utxo.TxOut.Amount
@@ -390,7 +390,7 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 		return nil, fmt.Errorf("not enough balance after collecting UTXOs: have %d, need %d", total, requiredAmount)
 	}
 
-	// TX Output 구성 - 수신자에게 보내는 금액
+	// Configure TX Output - Amount to receiver
 	var txOuts []*TxOutput
 	txOuts = append(txOuts, &TxOutput{
 		Address: to,
@@ -398,7 +398,7 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 		TxType:  txType,
 	})
 
-	// 거스름돈 (수수료는 Output에 포함되지 않음 = 암묵적 수수료)
+	// Change (Fee is not included in Output = Implicit fee)
 	if total > requiredAmount {
 		txOuts = append(txOuts, &TxOutput{
 			Address: from,
@@ -407,8 +407,8 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 		})
 	}
 
-	// GOB 역직렬화 후 nil이 빈 슬라이스로 바뀌는 문제 해결
-	// 트랜잭션 생성 시 nil을 빈 슬라이스로 정규화하여 해시 일관성 유지
+	// Resolve nil becoming empty slice after GOB deserialization
+	// Normalize nil to empty slice when creating transaction to maintain hash consistency
 	normalizedData := data
 	if normalizedData == nil {
 		normalizedData = []byte{}
@@ -418,7 +418,7 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 		normalizedInputs = []*TxInput{}
 	}
 
-	// 트랜잭션 생성
+	// Create transaction
 	tx := &Transaction{
 		Version:   p.cfg.Version.Transaction,
 		Timestamp: time.Now().Unix(),
@@ -428,10 +428,10 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 		Data:      normalizedData,
 	}
 
-	// TX ID 계산 (서명 전에 계산)
+	// Calculate TX ID (before signing)
 	tx.ID = utils.Hash(tx)
 
-	// 각 입력에 서명
+	// Sign each input
 	privateKey, err := crypto.BytesToPrivateKey(privateKeyBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
@@ -449,28 +449,28 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 	return tx, nil
 }
 
-// ValidateTxSignatures 트랜잭션의 모든 입력 서명 검증
+// ValidateTxSignatures validates all input signatures of transaction
 func (p *BlockChain) ValidateTxSignatures(tx *Transaction) error {
 	if tx == nil {
 		return fmt.Errorf("transaction is nil")
 	}
 
-	// Coinbase TX는 서명 검증 불필요
+	// Coinbase TX does not need signature verification
 	if len(tx.Inputs) == 0 {
 		return nil
 	}
 
-	// TX 해시 계산 (서명 검증용)
-	// 서명은 TX ID를 기준으로 함
+	// Calculate TX hash (for signature verification)
+	// Signature is based on TX ID
 	txHashBytes := utils.HashToBytes(tx.ID)
 
 	for i, input := range tx.Inputs {
-		// 공개키가 없으면 에러
+		// Error if public key is empty
 		if len(input.PublicKey) == 0 {
 			return fmt.Errorf("input[%d]: public key is empty", i)
 		}
 
-		// 서명 검증
+		// Verify signature
 		valid, err := crypto.VerifySignatureWithBytes(input.PublicKey, txHashBytes, input.Signature)
 		if err != nil {
 			return fmt.Errorf("input[%d]: signature verification error: %w", i, err)
@@ -479,7 +479,7 @@ func (p *BlockChain) ValidateTxSignatures(tx *Transaction) error {
 			return fmt.Errorf("input[%d]: invalid signature", i)
 		}
 
-		// UTXO 소유권 검증 (공개키 -> 주소 -> UTXO 소유자 확인)
+		// Verify UTXO ownership (Public key -> Address -> Check UTXO owner)
 		pubKey, err := crypto.BytesToPublicKey(input.PublicKey)
 		if err != nil {
 			return fmt.Errorf("input[%d]: failed to parse public key: %w", i, err)
@@ -490,13 +490,13 @@ func (p *BlockChain) ValidateTxSignatures(tx *Transaction) error {
 			return fmt.Errorf("input[%d]: failed to derive address from public key: %w", i, err)
 		}
 
-		// 참조하는 UTXO 가져오기
+		// Get referenced UTXO
 		utxo, err := p.GetUtxoByTxIdAndIdx(input.TxID, input.OutputIndex)
 		if err != nil {
 			return fmt.Errorf("input[%d]: failed to get referenced UTXO: %w", i, err)
 		}
 
-		// UTXO 소유자와 서명자 주소 비교
+		// Compare UTXO owner and signer address
 		if signerAddr != utxo.TxOut.Address {
 			return fmt.Errorf("input[%d]: signer address does not match UTXO owner", i)
 		}

@@ -14,7 +14,7 @@ import (
 	"github.com/abcfe/abcfe-node/wallet"
 )
 
-// Server REST API 서버 구조체
+// Server REST API server structure
 type Server struct {
 	port       int
 	httpServer *http.Server
@@ -25,7 +25,7 @@ type Server struct {
 	p2p        *p2p.P2PService
 }
 
-// NewServer API 서버 인스턴스 생성
+// NewServer creates API server instance
 func NewServer(port int, blockchain *core.BlockChain, walletMgr *wallet.WalletManager, cons *consensus.Consensus) *Server {
 	wsHub := api.NewWSHub()
 	return &Server{
@@ -37,9 +37,9 @@ func NewServer(port int, blockchain *core.BlockChain, walletMgr *wallet.WalletMa
 	}
 }
 
-// Start API 서버 시작
+// Start starts API server
 func (s *Server) Start() error {
-	// WebSocket Hub 시작
+	// Start WebSocket Hub
 	go s.wsHub.Run()
 
 	router := setupRouter(s.blockchain, s.wallet, s.wsHub, s.consensus, s.p2p)
@@ -64,23 +64,23 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// Stop API 서버 종료
+// Stop stops API server
 func (s *Server) Stop(ctx context.Context) error {
 	logger.Info("Shutting down REST API Server...")
 	return s.httpServer.Shutdown(ctx)
 }
 
-// GetWSHub WebSocket Hub 반환
+// GetWSHub returns WebSocket Hub
 func (s *Server) GetWSHub() *api.WSHub {
 	return s.wsHub
 }
 
-// SetP2P P2P 서비스 설정
+// SetP2P sets P2P service
 func (s *Server) SetP2P(p2pService *p2p.P2PService) {
 	s.p2p = p2pService
 }
 
-// GetP2P P2P 서비스 반환
+// GetP2P returns P2P service
 func (s *Server) GetP2P() *p2p.P2PService {
 	return s.p2p
 }

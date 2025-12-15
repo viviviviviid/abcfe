@@ -13,12 +13,12 @@ func (p *BlockChain) SetGenesisBlock() (*Block, error) {
 	var emptyProposer prt.Address
 	var emptySignature prt.Signature
 
-	// 제네시스블록에는 이전 블록 해시값이 없으므로, 0으로 구성
+	// Since genesis block has no previous block hash, it is set to 0
 	for i := range defaultPrevHash {
 		defaultPrevHash[i] = 0x00
 	}
 
-	// config에서 타임스탬프 가져오기 (0이면 현재 시간 사용)
+	// Get timestamp from config (use current time if 0)
 	genesisTimestamp := p.cfg.Genesis.Timestamp
 	if genesisTimestamp == 0 {
 		genesisTimestamp = time.Now().Unix()
@@ -29,7 +29,7 @@ func (p *BlockChain) SetGenesisBlock() (*Block, error) {
 		return nil, err
 	}
 
-	// 머클 루트 계산
+	// Calculate merkle root
 	merkleRoot := calculateMerkleRoot(txs)
 
 	blkHeader := &BlockHeader{
@@ -43,11 +43,11 @@ func (p *BlockChain) SetGenesisBlock() (*Block, error) {
 	block := &Block{
 		Header:       *blkHeader,
 		Transactions: txs,
-		Proposer:     emptyProposer,  // 제네시스 블록은 제안자 없음
-		Signature:    emptySignature, // 제네시스 블록은 서명 없음
+		Proposer:     emptyProposer,  // Genesis block has no proposer
+		Signature:    emptySignature, // Genesis block has no signature
 	}
 
-	// 블록 해시는 Header만으로 계산 (일반 블록과 동일한 방식)
+	// Calculate block hash using only Header (same way as normal block)
 	blkHash := utils.Hash(block.Header)
 	block.Header.Hash = blkHash
 
@@ -89,7 +89,7 @@ func (p *BlockChain) setGenesisTxs(genesisTimestamp int64) ([]*Transaction, erro
 		},
 	}
 
-	// TODO 서명값 넣고 이후 해시화
+	// TODO Put signature value and then hash
 
 	for i, tx := range txs {
 		txHash := utils.Hash(tx)

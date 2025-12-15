@@ -13,7 +13,7 @@ import (
 	"github.com/abcfe/abcfe-node/core"
 )
 
-// PeerState 피어 연결 상태
+// PeerState connection state
 type PeerState uint8
 
 const (
@@ -24,20 +24,20 @@ const (
 	PeerStateActive
 )
 
-// Peer 피어 정보
+// Peer information
 type Peer struct {
 	ID         string
 	Address    string
-	Port       int        // 상대방의 Listen Port (핸드셰이크에서 받음)
+	Port       int        // Remote Listen Port (received from handshake)
 	Conn       net.Conn
 	State      PeerState
 	Version    string
 	BestHeight uint64
 	LastSeen   time.Time
-	Inbound    bool // true: 상대가 연결함, false: 내가 연결함
+	Inbound    bool // true: remote connected, false: I connected
 }
 
-// Node P2P 노드
+// Node P2P node
 type Node struct {
 	mu sync.RWMutex
 
@@ -46,29 +46,29 @@ type Node struct {
 	Port       int
 	NetworkID  string
 	Version    string
-	Blockchain *core.BlockChain // 블록체인 참조 (핸드셰이크 시 높이 정보 필요)
+	Blockchain *core.BlockChain // Blockchain reference (needed height info during handshake)
 
-	// 피어 관리
+	// Peer management
 	Peers       map[string]*Peer // key: peer ID
 	MaxPeers    int
-	BootNodes   []string // 부트스트랩 노드 주소
+	BootNodes   []string // Bootstrap node addresses
 
-	// 메시지 핸들러
+	// Message handler
 	MessageHandler func(*Message, *Peer)
 
-	// 피어 연결 완료 콜백 (피어 디스커버리용)
+	// Peer connected callback (for peer discovery)
 	OnPeerConnected func(*Peer)
 
-	// 주기적 피어 교환 콜백
+	// Periodic peer exchange callback
 	OnPeerExchange func([]*Peer)
 
-	// 리스너
+	// Listener
 	listener net.Listener
 	running  bool
 	stopCh   chan struct{}
 }
 
-// NewNode 새 P2P 노드 생성
+// NewNode creates new P2P node
 func NewNode(address string, port int, networkID string) (*Node, error) {
 	nodeID, err := generateNodeID()
 	if err != nil {
@@ -88,7 +88,7 @@ func NewNode(address string, port int, networkID string) (*Node, error) {
 	}, nil
 }
 
-// generateNodeID 노드 ID 생성
+// generateNodeID generates node ID
 func generateNodeID() (string, error) {
 	bytes := make([]byte, 16)
 	if _, err := rand.Read(bytes); err != nil {
@@ -97,7 +97,7 @@ func generateNodeID() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-// Start 노드 시작
+// Start starts the node
 func (n *Node) Start() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -106,7 +106,7 @@ func (n *Node) Start() error {
 		return fmt.Errorf("node already running")
 	}
 
-	// TCP 리스너 시작
+	// Start TCP listener
 	listener, err := net.Listen("tcp", fmt.Sprintf("%s:%d", n.Address, n.Port))
 	if err != nil {
 		return fmt.Errorf("failed to start listener: %w", err)
@@ -115,19 +115,19 @@ func (n *Node) Start() error {
 	n.listener = listener
 	n.running = true
 
-	// 연결 수락 고루틴
+	// Connection accept goroutine
 	go n.acceptLoop()
 
-	// 부트노드 연결
+	// Connect to bootnodes
 	go n.connectToBootNodes()
 
-	// 피어 유지보수
+	// Peer maintenance
 	go n.maintainPeers()
 
 	return nil
 }
 
-// Stop 노드 종료
+// Stop stops the node
 func (n *Node) Stop() error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -143,7 +143,7 @@ func (n *Node) Stop() error {
 		n.listener.Close()
 	}
 
-	// 모든 피어 연결 종료
+	// Close all peer connections
 	for _, peer := range n.Peers {
 		if peer.Conn != nil {
 			peer.Conn.Close()
@@ -153,7 +153,7 @@ func (n *Node) Stop() error {
 	return nil
 }
 
-// acceptLoop 연결 수락 루프
+// acceptLoop connection accept loop
 func (n *Node) acceptLoop() {
 	for {
 		select {
@@ -170,7 +170,7 @@ func (n *Node) acceptLoop() {
 	}
 }
 
-// handleInboundConnection 인바운드 연결 처리
+// handleInboundConnection handles inbound connection
 func (n *Node) handleInboundConnection(conn net.Conn) {
 	logger.Debug("[P2P] Inbound connection from: ", conn.RemoteAddr().String())
 
@@ -183,7 +183,7 @@ func (n *Node) handleInboundConnection(conn net.Conn) {
 	}
 	n.mu.Unlock()
 
-	// 임시 피어 생성
+	// Create temporary peer
 	peer := &Peer{
 		Conn:     conn,
 		Address:  conn.RemoteAddr().String(),
@@ -192,11 +192,11 @@ func (n *Node) handleInboundConnection(conn net.Conn) {
 		Inbound:  true,
 	}
 
-	// 핸드셰이크 대기
+	// Wait for handshake
 	go n.handlePeer(peer)
 }
 
-// Connect 피어에 연결
+// Connect to peer
 func (n *Node) Connect(address string) error {
 	logger.Debug("[P2P] Connecting to peer: ", address)
 
@@ -223,7 +223,7 @@ func (n *Node) Connect(address string) error {
 		Inbound:  false,
 	}
 
-	// 핸드셰이크 전송
+	// Send handshake
 	if err := n.sendHandshake(peer); err != nil {
 		logger.Error("[P2P] Failed to send handshake to ", address, ": ", err)
 		conn.Close()
@@ -237,7 +237,7 @@ func (n *Node) Connect(address string) error {
 	return nil
 }
 
-// handlePeer 피어 처리 루프
+// handlePeer peer handling loop
 func (n *Node) handlePeer(peer *Peer) {
 	defer func() {
 		if peer.Conn != nil {
@@ -251,26 +251,26 @@ func (n *Node) handlePeer(peer *Peer) {
 		case <-n.stopCh:
 			return
 		default:
-			// 읽기 타임아웃 설정
+			// Set read timeout
 			peer.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 
-			// 1. 먼저 4바이트 길이 헤더 읽기
+			// 1. First read 4-byte length header
 			header := make([]byte, 4)
 			if _, err := io.ReadFull(peer.Conn, header); err != nil {
 				logger.Debug("[P2P] Peer ", peer.Address, " read header error: ", err)
 				return
 			}
 
-			// 2. 메시지 길이 파싱
+			// 2. Parse message length
 			msgLen := uint32(header[0])<<24 | uint32(header[1])<<16 | uint32(header[2])<<8 | uint32(header[3])
 			
-			// 메시지 크기 검증 (최대 10MB)
+			// Validate message size (max 10MB)
 			if msgLen > 10*1024*1024 {
 				logger.Error("[P2P] Message too large from ", peer.Address, ": ", msgLen, " bytes")
 				return
 			}
 
-			// 3. 정확한 길이만큼 메시지 읽기
+			// 3. Read message with exact length
 			buffer := make([]byte, msgLen)
 			peer.Conn.SetReadDeadline(time.Now().Add(30 * time.Second))
 			if _, err := io.ReadFull(peer.Conn, buffer); err != nil {
@@ -280,7 +280,7 @@ func (n *Node) handlePeer(peer *Peer) {
 
 			logger.Debug("[P2P] Received complete message (", msgLen, " bytes) from ", peer.Address)
 
-			// 4. 메시지 역직렬화
+			// 4. Deserialize message
 			msg, err := DeserializeMessage(buffer)
 			if err != nil {
 				logger.Error("[P2P] Failed to deserialize message from ", peer.Address, ": ", err)
@@ -289,13 +289,13 @@ func (n *Node) handlePeer(peer *Peer) {
 
 			peer.LastSeen = time.Now()
 
-			// 핸드셰이크 처리
+			// Handle handshake
 			if peer.State == PeerStateHandshaking {
 				n.handleHandshake(msg, peer)
 				continue
 			}
 
-			// 메시지 핸들러 호출
+			// Call message handler
 			if n.MessageHandler != nil {
 				n.MessageHandler(msg, peer)
 			}
@@ -303,9 +303,9 @@ func (n *Node) handlePeer(peer *Peer) {
 	}
 }
 
-// sendHandshake 핸드셰이크 전송
+// sendHandshake sends handshake
 func (n *Node) sendHandshake(peer *Peer) error {
-	// 현재 블록 높이 가져오기
+	// Get current block height
 	bestHeight := uint64(0)
 	bestHash := ""
 	if n.Blockchain != nil {
@@ -343,7 +343,7 @@ func (n *Node) sendHandshake(peer *Peer) error {
 	return n.sendMessage(peer, msg)
 }
 
-// handleHandshake 핸드셰이크 처리
+// handleHandshake handles handshake
 func (n *Node) handleHandshake(msg *Message, peer *Peer) {
 	if msg.Type != MsgTypeHandshake && msg.Type != MsgTypeHandshakeAck {
 		logger.Warn("[P2P] Unexpected message type during handshake: ", msg.Type)
@@ -358,7 +358,7 @@ func (n *Node) handleHandshake(msg *Message, peer *Peer) {
 
 	logger.Info("[P2P] Received handshake from node: ", payload.NodeID, " network: ", payload.NetworkID, " height: ", payload.BestHeight)
 
-	// 네트워크 ID 확인
+	// Check Network ID
 	if payload.NetworkID != n.NetworkID {
 		logger.Warn("[P2P] Network ID mismatch. Expected: ", n.NetworkID, " Got: ", payload.NetworkID)
 		peer.Conn.Close()
@@ -368,35 +368,35 @@ func (n *Node) handleHandshake(msg *Message, peer *Peer) {
 	peer.ID = payload.NodeID
 	peer.Version = payload.Version
 	peer.BestHeight = payload.BestHeight
-	peer.Port = payload.ListenPort // 상대방의 Listen Port 저장
+	peer.Port = payload.ListenPort // Save remote Listen Port
 	peer.State = PeerStateActive
 
 	logger.Info("[P2P] Peer info updated: ID=", peer.ID, " BestHeight=", peer.BestHeight, " ListenPort=", peer.Port)
 
-	// ACK 응답 (인바운드인 경우)
+	// ACK response (if inbound)
 	if peer.Inbound && msg.Type == MsgTypeHandshake {
 		logger.Debug("[P2P] Sending handshake ACK to: ", peer.Address)
 		n.sendHandshakeAck(peer)
 	}
 
-	// 피어 등록 (중복 연결 체크)
+	// Register peer (check duplicate connection)
 	if !n.addPeer(peer) {
-		// 중복 연결로 인해 추가 거부됨 - 연결 닫기
+		// Duplicate connection rejected - close connection
 		logger.Info("[P2P] Duplicate peer rejected, closing connection: ", peer.ID[:16])
 		peer.Conn.Close()
 		return
 	}
 	logger.Info("[P2P] Peer activated: ", peer.ID, " (", peer.Address, ")")
 
-	// 피어 연결 완료 콜백 호출 (피어 디스커버리 트리거)
+	// Call peer connected callback (trigger peer discovery)
 	if n.OnPeerConnected != nil {
 		go n.OnPeerConnected(peer)
 	}
 }
 
-// sendHandshakeAck 핸드셰이크 ACK 전송
+// sendHandshakeAck sends handshake ACK
 func (n *Node) sendHandshakeAck(peer *Peer) error {
-	// 현재 블록 높이 가져오기
+	// Get current block height
 	bestHeight := uint64(0)
 	bestHash := ""
 	if n.Blockchain != nil {
@@ -426,7 +426,7 @@ func (n *Node) sendHandshakeAck(peer *Peer) error {
 	return n.sendMessage(peer, msg)
 }
 
-// sendMessage 메시지 전송
+// sendMessage sends message
 func (n *Node) sendMessage(peer *Peer, msg *Message) error {
 	msg.Timestamp = time.Now().Unix()
 
@@ -435,8 +435,8 @@ func (n *Node) sendMessage(peer *Peer, msg *Message) error {
 		return err
 	}
 
-	// 헤더 + 메시지를 하나의 버퍼로 합쳐서 원자적으로 전송
-	// (별도 Write 호출 시 동시 전송에서 메시지가 뒤섞일 수 있음)
+	// Combine header + message into one buffer and send atomically
+	// (Separate Write calls can mix messages during concurrent transmission)
 	msgLen := uint32(len(data))
 	packet := make([]byte, 4+len(data))
 	packet[0] = byte(msgLen >> 24)
@@ -450,7 +450,7 @@ func (n *Node) sendMessage(peer *Peer, msg *Message) error {
 	return err
 }
 
-// Broadcast 모든 피어에게 메시지 브로드캐스트
+// Broadcast message to all peers
 func (n *Node) Broadcast(msg *Message) {
 	n.mu.RLock()
 	peers := make([]*Peer, 0, len(n.Peers))
@@ -472,30 +472,30 @@ func (n *Node) Broadcast(msg *Message) {
 	}
 }
 
-// addPeer 피어 추가 (중복 연결 방지)
-// 반환값: true=피어 추가됨, false=이미 존재하여 추가되지 않음
+// addPeer adds peer (prevent duplicate connection)
+// Returns: true=peer added, false=already exists, not added
 func (n *Node) addPeer(peer *Peer) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	// 이미 같은 ID의 피어가 존재하는지 확인
+	// Check if peer with same ID already exists
 	if existingPeer, exists := n.Peers[peer.ID]; exists {
-		// 이미 존재하면 새 연결 거부 (기존 연결 유지)
-		// 어떤 연결을 유지할지 결정: 일관성을 위해 ID 비교 (낮은 ID가 outbound 역할)
+		// If exists, reject new connection (keep existing)
+		// Decide which connection to keep: Compare IDs for consistency (lower ID acts as outbound)
 		if n.ID < peer.ID {
-			// 내 ID가 낮으면 내가 연결을 시도해야 함 (기존 inbound는 거부)
+			// If my ID is lower, I should try to connect (reject existing inbound)
 			if peer.Inbound {
 				logger.Debug("[P2P] Rejecting duplicate inbound connection from ", peer.ID[:16], " (I should connect)")
 				return false
 			}
 		} else {
-			// 내 ID가 높으면 상대가 연결을 시도해야 함 (기존 outbound는 거부)
+			// If my ID is higher, peer should try to connect (reject existing outbound)
 			if !peer.Inbound {
 				logger.Debug("[P2P] Rejecting duplicate outbound connection to ", peer.ID[:16], " (peer should connect)")
 				return false
 			}
 		}
-		// 기존 연결을 새 연결로 교체
+		// Replace existing connection with new one
 		if existingPeer.Conn != nil {
 			existingPeer.Conn.Close()
 		}
@@ -506,16 +506,16 @@ func (n *Node) addPeer(peer *Peer) bool {
 	return true
 }
 
-// removePeer 피어 제거
-// 중요: 같은 ID로 새 연결이 교체된 경우, 기존 연결의 handlePeer가 종료될 때
-// 새 연결을 삭제하지 않도록 현재 등록된 연결과 비교
+// removePeer removes peer
+// Important: If replaced with new connection, when old handlePeer exits
+// Compare with currently registered connection to avoid deleting new one
 func (n *Node) removePeer(peer *Peer) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	// 현재 등록된 피어가 제거하려는 피어와 같은 연결인지 확인
+	// Check if registered peer matches the one being removed
 	if existingPeer, exists := n.Peers[peer.ID]; exists {
-		// 다른 연결(교체된 새 연결)이면 삭제하지 않음
+		// If different connection (replaced), do not delete
 		if existingPeer.Conn != peer.Conn {
 			logger.Debug("[P2P] Skipping removal of replaced connection for peer ", peer.ID[:16])
 			return
@@ -525,17 +525,17 @@ func (n *Node) removePeer(peer *Peer) {
 	delete(n.Peers, peer.ID)
 }
 
-// connectToBootNodes 부트노드에 연결
+// connectToBootNodes connects to bootnodes
 func (n *Node) connectToBootNodes() {
 	for _, addr := range n.BootNodes {
 		go n.Connect(addr)
 	}
 }
 
-// maintainPeers 피어 유지보수
+// maintainPeers maintains peers
 func (n *Node) maintainPeers() {
 	ticker := time.NewTicker(10 * time.Second)
-	peerExchangeTicker := time.NewTicker(30 * time.Second) // 30초마다 피어 교환
+	peerExchangeTicker := time.NewTicker(30 * time.Second) // Exchange peers every 30 seconds
 	defer ticker.Stop()
 	defer peerExchangeTicker.Stop()
 
@@ -546,29 +546,29 @@ func (n *Node) maintainPeers() {
 		case <-ticker.C:
 			n.pingPeers()
 			n.removeInactivePeers()
-			// 피어가 없으면 부트노드에 재연결 시도
+			// Retry bootnode connection if no peers
 			n.reconnectIfNeeded()
 		case <-peerExchangeTicker.C:
-			// 주기적 피어 교환
+			// Periodic peer exchange
 			n.exchangePeers()
 		}
 	}
 }
 
-// exchangePeers 주기적으로 피어 목록 교환
+// exchangePeers exchanges peer list periodically
 func (n *Node) exchangePeers() {
 	peers := n.GetPeers()
 	if len(peers) == 0 {
 		return
 	}
 
-	// 콜백이 설정되어 있으면 호출
+	// Call callback if set
 	if n.OnPeerExchange != nil {
 		n.OnPeerExchange(peers)
 	}
 }
 
-// reconnectIfNeeded 피어가 없으면 부트노드에 재연결
+// reconnectIfNeeded reconnects to bootnodes if no peers
 func (n *Node) reconnectIfNeeded() {
 	activeCount := n.GetPeerCount()
 	if activeCount > 0 {
@@ -588,13 +588,13 @@ func (n *Node) reconnectIfNeeded() {
 	}
 }
 
-// pingPeers 모든 피어에게 Ping 전송
+// pingPeers sends Ping to all peers
 func (n *Node) pingPeers() {
 	msg := NewMessage(MsgTypePing, nil, n.ID)
 	n.Broadcast(msg)
 }
 
-// removeInactivePeers 비활성 피어 제거
+// removeInactivePeers removes inactive peers
 func (n *Node) removeInactivePeers() {
 	n.mu.Lock()
 	defer n.mu.Unlock()
@@ -610,7 +610,7 @@ func (n *Node) removeInactivePeers() {
 	}
 }
 
-// GetPeerCount 피어 수 조회
+// GetPeerCount returns peer count
 func (n *Node) GetPeerCount() int {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
@@ -624,7 +624,7 @@ func (n *Node) GetPeerCount() int {
 	return count
 }
 
-// GetPeers 피어 목록 조회
+// GetPeers returns peer list
 func (n *Node) GetPeers() []*Peer {
 	n.mu.RLock()
 	defer n.mu.RUnlock()

@@ -7,21 +7,21 @@ import (
 	"github.com/abcfe/abcfe-node/common/logger"
 )
 
-// LoggingMiddleware HTTP 요청 로깅 미들웨어
+// LoggingMiddleware HTTP request logging middleware
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		// 다음 핸들러 호출
+		// Call next handler
 		next.ServeHTTP(w, r)
 
-		// 요청 로깅
+		// Log request
 		duration := time.Since(start)
 		logger.Info("Request:", r.Method, r.URL.Path, "Duration:", duration)
 	})
 }
 
-// RecoveryMiddleware 패닉 복구 미들웨어
+// RecoveryMiddleware panic recovery middleware
 func RecoveryMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {

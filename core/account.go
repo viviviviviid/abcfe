@@ -9,7 +9,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-// 계정 상태 상수
+// Account status constants
 const (
 	AccountStatusNormal     = "NORMAL"
 	AccountStatusStaking    = "STAKING"
@@ -19,19 +19,19 @@ const (
 )
 
 type Account struct {
-	Address   prt.Address `json:"address"`   // 계정 주소
-	Status    string      `json:"status"`    // 계정 상태
-	Balance   uint64      `json:"balance"`   // 잔액
-	CreatedAt int64       `json:"createdAt"` // 계정 최초 활성화 시간
-	UpdatedAt int64       `json:"updatedAt"` // 마지막 수정 시간
+	Address   prt.Address `json:"address"`   // Account address
+	Status    string      `json:"status"`    // Account status
+	Balance   uint64      `json:"balance"`   // Balance
+	CreatedAt int64       `json:"createdAt"` // Account creation time
+	UpdatedAt int64       `json:"updatedAt"` // Last updated time
 }
 
-// AccountTxList 계정의 트랜잭션 목록
+// AccountTxList transaction list of account
 type AccountTxList struct {
 	TxHashes []prt.Hash `json:"txHashes"`
 }
 
-// GetAccount 계정 정보 조회
+// GetAccount gets account info
 func (p *BlockChain) GetAccount(address prt.Address) (*Account, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -40,7 +40,7 @@ func (p *BlockChain) GetAccount(address prt.Address) (*Account, error) {
 	data, err := p.db.Get(key, nil)
 	if err != nil {
 		if err == leveldb.ErrNotFound {
-			return nil, nil // 계정 없음
+			return nil, nil // Account not found
 		}
 		return nil, fmt.Errorf("failed to get account: %w", err)
 	}
@@ -53,7 +53,7 @@ func (p *BlockChain) GetAccount(address prt.Address) (*Account, error) {
 	return &account, nil
 }
 
-// CreateAccount 새 계정 생성
+// CreateAccount creates new account
 func (p *BlockChain) CreateAccount(address prt.Address) (*Account, error) {
 	now := time.Now().Unix()
 	account := &Account{
@@ -71,7 +71,7 @@ func (p *BlockChain) CreateAccount(address prt.Address) (*Account, error) {
 	return account, nil
 }
 
-// GetOrCreateAccount 계정 조회 또는 생성
+// GetOrCreateAccount gets or creates account
 func (p *BlockChain) GetOrCreateAccount(address prt.Address) (*Account, error) {
 	account, err := p.GetAccount(address)
 	if err != nil {
@@ -85,7 +85,7 @@ func (p *BlockChain) GetOrCreateAccount(address prt.Address) (*Account, error) {
 	return account, nil
 }
 
-// saveAccount 계정 정보 저장
+// saveAccount saves account info
 func (p *BlockChain) saveAccount(account *Account) error {
 	key := []byte(prt.PrefixAddress + utils.AddressToString(account.Address))
 	data, err := utils.SerializeData(account, utils.SerializationFormatGob)
@@ -100,14 +100,14 @@ func (p *BlockChain) saveAccount(account *Account) error {
 	return nil
 }
 
-// AddAccountTx 계정의 트랜잭션 목록에 추가
+// AddAccountTx adds transaction to account tx list
 func (p *BlockChain) AddAccountTx(address prt.Address, txHash prt.Hash) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
 	key := []byte(prt.PrefixAddressTxs + utils.AddressToString(address))
 
-	// 기존 목록 조회
+	// Get existing list
 	var txList AccountTxList
 	data, err := p.db.Get(key, nil)
 	if err != nil && err != leveldb.ErrNotFound {
@@ -120,10 +120,10 @@ func (p *BlockChain) AddAccountTx(address prt.Address, txHash prt.Hash) error {
 		}
 	}
 
-	// 새 트랜잭션 추가
+	// Add new transaction
 	txList.TxHashes = append(txList.TxHashes, txHash)
 
-	// 저장
+	// Save
 	newData, err := utils.SerializeData(txList, utils.SerializationFormatGob)
 	if err != nil {
 		return fmt.Errorf("failed to serialize tx list: %w", err)
@@ -136,7 +136,7 @@ func (p *BlockChain) AddAccountTx(address prt.Address, txHash prt.Hash) error {
 	return nil
 }
 
-// AddAccountTxReceived 수신 트랜잭션 추가
+// AddAccountTxReceived adds received transaction
 func (p *BlockChain) AddAccountTxReceived(address prt.Address, txHash prt.Hash) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -169,7 +169,7 @@ func (p *BlockChain) AddAccountTxReceived(address prt.Address, txHash prt.Hash) 
 	return nil
 }
 
-// AddAccountTxSent 발신 트랜잭션 추가
+// AddAccountTxSent adds sent transaction
 func (p *BlockChain) AddAccountTxSent(address prt.Address, txHash prt.Hash) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -202,15 +202,15 @@ func (p *BlockChain) AddAccountTxSent(address prt.Address, txHash prt.Hash) erro
 	return nil
 }
 
-// UpdateAccountBalance UTXO 기반 잔액 업데이트
+// UpdateAccountBalance updates balance based on UTXO
 func (p *BlockChain) UpdateAccountBalance(address prt.Address) error {
-	// 계정 조회 또는 생성
+	// Get or create account
 	account, err := p.GetOrCreateAccount(address)
 	if err != nil {
 		return fmt.Errorf("failed to get account: %w", err)
 	}
 
-	// UTXO 기반 잔액 계산
+	// Calculate balance based on UTXO
 	utxoList, err := p.GetUtxoList(address, false)
 	if err != nil {
 		return fmt.Errorf("failed to get utxo list: %w", err)
@@ -222,7 +222,7 @@ func (p *BlockChain) UpdateAccountBalance(address prt.Address) error {
 	return p.saveAccount(account)
 }
 
-// UpdateAccountStatus 계정 상태 업데이트
+// UpdateAccountStatus updates account status
 func (p *BlockChain) UpdateAccountStatus(address prt.Address, status string) error {
 	account, err := p.GetOrCreateAccount(address)
 	if err != nil {
@@ -235,7 +235,7 @@ func (p *BlockChain) UpdateAccountStatus(address prt.Address, status string) err
 	return p.saveAccount(account)
 }
 
-// GetAccountTxList 계정의 전체 트랜잭션 목록 조회
+// GetAccountTxList gets all transactions of account
 func (p *BlockChain) GetAccountTxList(address prt.Address) ([]prt.Hash, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -257,7 +257,7 @@ func (p *BlockChain) GetAccountTxList(address prt.Address) ([]prt.Hash, error) {
 	return txList.TxHashes, nil
 }
 
-// GetAccountReceivedTxList 수신 트랜잭션 목록 조회
+// GetAccountReceivedTxList gets received transaction list
 func (p *BlockChain) GetAccountReceivedTxList(address prt.Address) ([]prt.Hash, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -279,7 +279,7 @@ func (p *BlockChain) GetAccountReceivedTxList(address prt.Address) ([]prt.Hash, 
 	return txList.TxHashes, nil
 }
 
-// GetAccountSentTxList 발신 트랜잭션 목록 조회
+// GetAccountSentTxList gets sent transaction list
 func (p *BlockChain) GetAccountSentTxList(address prt.Address) ([]prt.Hash, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -301,7 +301,7 @@ func (p *BlockChain) GetAccountSentTxList(address prt.Address) ([]prt.Hash, erro
 	return txList.TxHashes, nil
 }
 
-// GetBalance UTXO 기반 잔액 조회
+// GetBalance gets balance based on UTXO
 func (p *BlockChain) GetBalance(address prt.Address) (uint64, error) {
 	utxoList, err := p.GetUtxoList(address, false)
 	if err != nil {

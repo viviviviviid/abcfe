@@ -13,8 +13,8 @@ type Common struct {
 	ServiceName   string
 	Port          int
 	Mode          string // boot, validator, sentry
-	NetworkID     string // 네트워크 식별자
-	BlockProducer bool   // 블록 생성자 여부
+	NetworkID     string // Network identifier
+	BlockProducer bool   // Whether block producer
 }
 
 type LogInfo struct {
@@ -43,17 +43,17 @@ type Version struct {
 type Genesis struct {
 	SystemAddresses []string `toml:"SystemAddresses"`
 	SystemBalances  []uint64 `toml:"SystemBalances"`
-	Timestamp       int64    `toml:"Timestamp"` // 제네시스 블록 타임스탬프 (고정값, 0이면 현재 시간 사용)
+	Timestamp       int64    `toml:"Timestamp"` // Genesis block timestamp (fixed value, use current time if 0)
 }
 
-// ValidatorConfig 제네시스 검증자 설정
+// ValidatorConfig genesis validator config
 type ValidatorConfig struct {
 	Address     string `toml:"address"`
 	PublicKey   string `toml:"publicKey"`   // hex encoded
 	VotingPower uint64 `toml:"votingPower"`
 }
 
-// Validators 검증자 목록 설정 (PoA용)
+// Validators validator list config (for PoA)
 type Validators struct {
 	List []ValidatorConfig `toml:"list"`
 }
@@ -68,16 +68,16 @@ type P2P struct {
 	BootNodes []string `toml:"BootNodes"`
 }
 
-// Fee 수수료 설정
+// Fee config
 type Fee struct {
-	MinFee      uint64 `toml:"minFee"`      // 최소 수수료 (고정값)
-	BlockReward uint64 `toml:"blockReward"` // 블록 생성 보상
+	MinFee      uint64 `toml:"minFee"`      // Minimum fee (fixed value)
+	BlockReward uint64 `toml:"blockReward"` // Block reward
 }
 
-// Transaction 트랜잭션 제한 설정
+// Transaction limit config
 type Transaction struct {
-	MaxMemoSize uint64 `toml:"maxMemoSize"` // 최대 메모 크기 (bytes)
-	MaxDataSize uint64 `toml:"maxDataSize"` // 최대 데이터 크기 (bytes)
+	MaxMemoSize uint64 `toml:"maxMemoSize"` // Max memo size (bytes)
+	MaxDataSize uint64 `toml:"maxDataSize"` // Max data size (bytes)
 }
 
 type Config struct {
@@ -87,11 +87,11 @@ type Config struct {
 	Wallet      Wallet
 	Version     Version
 	Genesis     Genesis
-	Validators  Validators  // 제네시스 검증자 목록 (PoA)
+	Validators  Validators  // Genesis validator list (PoA)
 	Server      Server
 	P2P         P2P
-	Fee         Fee         // 수수료 설정
-	Transaction Transaction // 트랜잭션 제한 설정
+	Fee         Fee         // Fee config
+	Transaction Transaction // Transaction limit config
 }
 
 func NewConfig(filepath string) (*Config, error) {

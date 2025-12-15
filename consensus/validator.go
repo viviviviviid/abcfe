@@ -9,21 +9,21 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-// Validator 검증자 정보
+// Validator information
 type Validator struct {
 	Address     prt.Address `json:"address"`
 	PublicKey   []byte      `json:"publicKey"`
-	VotingPower uint64      `json:"votingPower"` // 스테이킹 금액 기반
+	VotingPower uint64      `json:"votingPower"` // Based on staked amount
 	IsActive    bool        `json:"isActive"`
 }
 
-// ValidatorSet 검증자 목록
+// ValidatorSet list of validators
 type ValidatorSet struct {
 	Validators       map[string]*Validator `json:"validators"` // key: address string
 	TotalVotingPower uint64                `json:"totalVotingPower"`
 }
 
-// NewValidatorSet 새 검증자셋 생성
+// NewValidatorSet creates a new validator set
 func NewValidatorSet() *ValidatorSet {
 	return &ValidatorSet{
 		Validators:       make(map[string]*Validator),
@@ -31,7 +31,7 @@ func NewValidatorSet() *ValidatorSet {
 	}
 }
 
-// Validator 인터페이스 구현
+// Validator interface implementation
 func (v *Validator) GetAddress() prt.Address {
 	return v.Address
 }
@@ -48,7 +48,7 @@ func (v *Validator) GetActiveStat() bool {
 	return v.IsActive
 }
 
-// SignBlock 블록 서명
+// SignBlock signs a block
 func (v *Validator) SignBlock(blockHash prt.Hash, privateKeyBytes []byte) (prt.Signature, error) {
 	privateKey, err := crypto.BytesToPrivateKey(privateKeyBytes)
 	if err != nil {
@@ -64,7 +64,7 @@ func (v *Validator) SignBlock(blockHash prt.Hash, privateKeyBytes []byte) (prt.S
 	return sig, nil
 }
 
-// ValidateBlockSignature 블록 서명 검증
+// ValidateBlockSignature validates block signature
 func (v *Validator) ValidateBlockSignature(blockHash prt.Hash, sig prt.Signature) bool {
 	publicKey, err := crypto.BytesToPublicKey(v.PublicKey)
 	if err != nil {
@@ -77,7 +77,7 @@ func (v *Validator) ValidateBlockSignature(blockHash prt.Hash, sig prt.Signature
 	hashBytes := utils.HashToBytes(blockHash)
 	result := crypto.VerifySignature(publicKey, hashBytes, sig)
 	if !result {
-		// 서명의 실제 길이 찾기 (trailing zeros 제거)
+		// Find actual signature length (remove trailing zeros)
 		sigLen := len(sig)
 		for sigLen > 0 && sig[sigLen-1] == 0 {
 			sigLen--
@@ -91,14 +91,14 @@ func (v *Validator) ValidateBlockSignature(blockHash prt.Hash, sig prt.Signature
 	return result
 }
 
-// AddValidator 검증자 추가
+// AddValidator adds a validator
 func (vs *ValidatorSet) AddValidator(validator *Validator) {
 	addrStr := utils.AddressToString(validator.Address)
 	vs.Validators[addrStr] = validator
 	vs.TotalVotingPower += validator.VotingPower
 }
 
-// RemoveValidator 검증자 제거
+// RemoveValidator removes a validator
 func (vs *ValidatorSet) RemoveValidator(address prt.Address) {
 	addrStr := utils.AddressToString(address)
 	if v, exists := vs.Validators[addrStr]; exists {
@@ -107,13 +107,13 @@ func (vs *ValidatorSet) RemoveValidator(address prt.Address) {
 	}
 }
 
-// GetValidator 검증자 조회
+// GetValidator retrieves a validator
 func (vs *ValidatorSet) GetValidator(address prt.Address) *Validator {
 	addrStr := utils.AddressToString(address)
 	return vs.Validators[addrStr]
 }
 
-// GetActiveValidators 활성 검증자 목록
+// GetActiveValidators returns list of active validators
 func (vs *ValidatorSet) GetActiveValidators() []*Validator {
 	var active []*Validator
 	for _, v := range vs.Validators {
@@ -124,18 +124,18 @@ func (vs *ValidatorSet) GetActiveValidators() []*Validator {
 	return active
 }
 
-// UpdateFromStakerSet 스테이커셋에서 검증자셋 업데이트
+// UpdateFromStakerSet updates validator set from staker set
 func (vs *ValidatorSet) UpdateFromStakerSet(stakerSet *StakerSet, minStake uint64) {
-	// 기존 검증자 초기화
+	// Initialize existing validators
 	vs.Validators = make(map[string]*Validator)
 	vs.TotalVotingPower = 0
 
 	for addrStr, staker := range stakerSet.Stakers {
-		// 최소 스테이킹 금액 이상인 경우만 검증자
+		// Validator only if staked amount is above minimum
 		if staker.IsActive && staker.Amount >= minStake {
 			vs.Validators[addrStr] = &Validator{
 				Address:     staker.Address,
-				PublicKey:   staker.PublicKey, // 스테이커의 공개키 복사
+				PublicKey:   staker.PublicKey, // Copy staker's public key
 				VotingPower: staker.Amount,
 				IsActive:    true,
 			}
@@ -144,7 +144,7 @@ func (vs *ValidatorSet) UpdateFromStakerSet(stakerSet *StakerSet, minStake uint6
 	}
 }
 
-// SaveValidatorSet DB에 검증자셋 저장
+// SaveValidatorSet saves validator set to DB
 func SaveValidatorSet(db *leveldb.DB, validatorSet *ValidatorSet) error {
 	key := []byte("consensus:validators")
 	data, err := utils.SerializeData(validatorSet, utils.SerializationFormatGob)
@@ -159,7 +159,7 @@ func SaveValidatorSet(db *leveldb.DB, validatorSet *ValidatorSet) error {
 	return nil
 }
 
-// LoadValidatorSet DB에서 검증자셋 로드
+// LoadValidatorSet loads validator set from DB
 func LoadValidatorSet(db *leveldb.DB) (*ValidatorSet, error) {
 	key := []byte("consensus:validators")
 	data, err := db.Get(key, nil)

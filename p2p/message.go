@@ -7,61 +7,61 @@ import (
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
 
-// MessageType 메시지 유형
+// MessageType message type
 type MessageType uint8
 
 const (
-	// 핸드셰이크
+	// Handshake
 	MsgTypeHandshake MessageType = iota
 	MsgTypeHandshakeAck
 
-	// 블록 관련
+	// Block related
 	MsgTypeNewBlock
 	MsgTypeGetBlock
 	MsgTypeBlock
-	MsgTypeGetBlocks // 블록 범위 요청
-	MsgTypeBlocks    // 다중 블록 응답
+	MsgTypeGetBlocks // Block range request
+	MsgTypeBlocks    // Multi-block response
 
-	// 트랜잭션 관련
+	// Transaction related
 	MsgTypeNewTx
 	MsgTypeGetTx
 	MsgTypeTx
 
-	// 피어 관리
+	// Peer management
 	MsgTypePing
 	MsgTypePong
 	MsgTypeGetPeers
 	MsgTypePeers
 
-	// 컨센서스
+	// Consensus
 	MsgTypeProposal
 	MsgTypeVote
 )
 
-// Message P2P 메시지
+// Message P2P message
 type Message struct {
 	Type      MessageType `json:"type"`
 	Payload   []byte      `json:"payload"`
-	From      string      `json:"from"`      // 발신자 피어 ID
+	From      string      `json:"from"`      // Sender Peer ID
 	Timestamp int64       `json:"timestamp"`
 }
 
-// NewMessage 새 메시지 생성
+// NewMessage creates new message
 func NewMessage(msgType MessageType, payload []byte, from string) *Message {
 	return &Message{
 		Type:      msgType,
 		Payload:   payload,
 		From:      from,
-		Timestamp: 0, // 전송 시 설정
+		Timestamp: 0, // Set on send
 	}
 }
 
-// Serialize 메시지 직렬화
+// Serialize message serialization
 func (m *Message) Serialize() ([]byte, error) {
 	return json.Marshal(m)
 }
 
-// DeserializeMessage 메시지 역직렬화
+// DeserializeMessage message deserialization
 func DeserializeMessage(data []byte) (*Message, error) {
 	var msg Message
 	if err := json.Unmarshal(data, &msg); err != nil {
@@ -70,9 +70,9 @@ func DeserializeMessage(data []byte) (*Message, error) {
 	return &msg, nil
 }
 
-// ===== 페이로드 타입 정의 =====
+// ===== Payload Type Definitions =====
 
-// HandshakePayload 핸드셰이크 페이로드
+// HandshakePayload handshake payload
 type HandshakePayload struct {
 	Version    string `json:"version"`
 	NodeID     string `json:"nodeId"`
@@ -82,49 +82,49 @@ type HandshakePayload struct {
 	BestHash   string `json:"bestHash"`
 }
 
-// NewBlockPayload 새 블록 알림 페이로드
+// NewBlockPayload new block notification payload
 type NewBlockPayload struct {
 	Height    uint64   `json:"height"`
 	Hash      prt.Hash `json:"hash"`
-	BlockData []byte   `json:"blockData"` // 직렬화된 블록
+	BlockData []byte   `json:"blockData"` // Serialized block
 }
 
-// GetBlockPayload 블록 요청 페이로드
+// GetBlockPayload block request payload
 type GetBlockPayload struct {
 	Height uint64   `json:"height,omitempty"`
 	Hash   prt.Hash `json:"hash,omitempty"`
 }
 
-// GetBlocksPayload 블록 범위 요청 페이로드
+// GetBlocksPayload block range request payload
 type GetBlocksPayload struct {
 	StartHeight uint64 `json:"startHeight"`
 	EndHeight   uint64 `json:"endHeight"`
 }
 
-// NewTxPayload 새 트랜잭션 알림 페이로드
+// NewTxPayload new transaction notification payload
 type NewTxPayload struct {
 	TxID   prt.Hash `json:"txId"`
-	TxData []byte   `json:"txData"` // 직렬화된 트랜잭션
+	TxData []byte   `json:"txData"` // Serialized transaction
 }
 
-// GetTxPayload 트랜잭션 요청 페이로드
+// GetTxPayload transaction request payload
 type GetTxPayload struct {
 	TxID prt.Hash `json:"txId"`
 }
 
-// PeersPayload 피어 목록 페이로드
+// PeersPayload peer list payload
 type PeersPayload struct {
 	Peers []PeerInfo `json:"peers"`
 }
 
-// PeerInfo 피어 정보
+// PeerInfo peer info
 type PeerInfo struct {
 	ID      string `json:"id"`
 	Address string `json:"address"`
 	Port    int    `json:"port"`
 }
 
-// ProposalPayload 블록 제안 페이로드
+// ProposalPayload block proposal payload
 type ProposalPayload struct {
 	Height     uint64        `json:"height"`
 	Round      uint32        `json:"round"`
@@ -134,7 +134,7 @@ type ProposalPayload struct {
 	Signature  prt.Signature `json:"signature"`
 }
 
-// VotePayload 투표 페이로드
+// VotePayload vote payload
 type VotePayload struct {
 	Height    uint64        `json:"height"`
 	Round     uint32        `json:"round"`
@@ -144,14 +144,14 @@ type VotePayload struct {
 	Signature prt.Signature `json:"signature"`
 }
 
-// ===== 페이로드 직렬화 헬퍼 =====
+// ===== Payload Serialization Helpers =====
 
-// MarshalPayload 페이로드 직렬화
+// MarshalPayload payload serialization
 func MarshalPayload(payload interface{}) ([]byte, error) {
 	return json.Marshal(payload)
 }
 
-// UnmarshalPayload 페이로드 역직렬화
+// UnmarshalPayload payload deserialization
 func UnmarshalPayload(data []byte, v interface{}) error {
 	return json.Unmarshal(data, v)
 }

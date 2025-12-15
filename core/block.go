@@ -10,54 +10,54 @@ import (
 )
 
 type Block struct {
-	Header       BlockHeader    `json:"header"`       // 블록 헤더
-	Transactions []*Transaction `json:"transactions"` // 트랜잭션 목록
+	Header       BlockHeader    `json:"header"`       // Block header
+	Transactions []*Transaction `json:"transactions"` // Transaction list
 
-	// PoA 컨센서스 정보
-	Proposer  prt.Address   `json:"proposer"`  // 블록 제안자 주소
-	Signature prt.Signature `json:"signature"` // 제안자의 블록 서명
+	// PoA consensus info
+	Proposer  prt.Address   `json:"proposer"`  // Block proposer address
+	Signature prt.Signature `json:"signature"` // Proposer's block signature
 
-	// BFT 컨센서스 정보 (2/3 투표 증거)
-	CommitSignatures []CommitSignature `json:"commitSignatures,omitempty"` // 검증자들의 커밋 서명
+	// BFT consensus info (2/3 vote evidence)
+	CommitSignatures []CommitSignature `json:"commitSignatures,omitempty"` // Validators' commit signatures
 }
 
-// CommitSignature 검증자의 커밋 서명 정보
+// CommitSignature validator's commit signature info
 type CommitSignature struct {
-	ValidatorAddress prt.Address   `json:"validatorAddress"` // 검증자 주소
-	Signature        prt.Signature `json:"signature"`        // 블록 해시에 대한 서명
-	Timestamp        int64         `json:"timestamp"`        // 서명 시간
+	ValidatorAddress prt.Address   `json:"validatorAddress"` // Validator address
+	Signature        prt.Signature `json:"signature"`        // Signature for block hash
+	Timestamp        int64         `json:"timestamp"`        // Signature time
 }
 
 type BlockHeader struct {
-	Hash       prt.Hash `json:"hash"`       // 블록 해시
-	PrevHash   prt.Hash `json:"prevHash"`   // 이전 블록 해시
-	Version    string   `json:"version"`    // 블록체인 프로토콜 버전
-	Height     uint64   `json:"height"`     // 블록 높이 (uint64로 변경)
-	MerkleRoot prt.Hash `json:"merkleRoot"` // 트랜잭션 머클 루트
-	Timestamp  int64    `json:"timestamp"`  // 블록 생성 시간 (Unix 타임스탬프)
-	// StateRoot  Hash   `json:"stateRoot"`  // 상태 머클 루트 (UTXO 또는 계정 상태)
+	Hash       prt.Hash `json:"hash"`       // Block hash
+	PrevHash   prt.Hash `json:"prevHash"`   // Previous block hash
+	Version    string   `json:"version"`    // Blockchain protocol version
+	Height     uint64   `json:"height"`     // Block height (changed to uint64)
+	MerkleRoot prt.Hash `json:"merkleRoot"` // Transaction Merkle root
+	Timestamp  int64    `json:"timestamp"`  // Block creation time (Unix timestamp)
+	// StateRoot  Hash   `json:"stateRoot"`  // State Merkle root (UTXO or account state)
 }
 
 func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Address, blockTimestamp int64) *Block {
-	// 메모리 풀에서 트랜잭션 가져오기
+	// Get transactions from mempool
 	candidateTxs := p.Mempool.GetTxs()
 
 	// logger.Info("[SetBlock] Mempool has ", len(candidateTxs), " candidate TXs")
 
-	// 유효한 트랜잭션만 필터링 (서명 검증 포함)
+	// Filter only valid transactions (including signature verification)
 	var validTxs []*Transaction
 	var invalidTxIds []prt.Hash
 	var totalFees uint64 = 0
 
 	for _, tx := range candidateTxs {
 		if err := p.ValidateTransaction(tx); err != nil {
-			// 검증 실패한 트랜잭션은 멤풀에서 제거 예정
+			// Invalid transactions will be removed from mempool
 			logger.Warn("[SetBlock] TX validation failed: ", utils.HashToString(tx.ID)[:16], " error: ", err)
 			invalidTxIds = append(invalidTxIds, tx.ID)
 			continue
 		}
 
-		// 수수료 계산
+		// Calculate fee
 		fee, err := p.CalculateTxFee(tx)
 		if err != nil {
 			logger.Warn("[SetBlock] Failed to calculate fee for TX: ", utils.HashToString(tx.ID)[:16], " error: ", err)
@@ -70,27 +70,27 @@ func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Add
 		validTxs = append(validTxs, tx)
 	}
 
-	// 검증 실패한 트랜잭션은 멤풀에서 제거
+	// Remove invalid transactions from mempool
 	for _, txId := range invalidTxIds {
 		logger.Warn("[SetBlock] Removing invalid TX from mempool: ", utils.HashToString(txId)[:16])
 		p.Mempool.DelTx(txId)
 	}
 
-	// Coinbase TX 생성 (블록 보상 + 수수료) - 블록 타임스탬프 사용
+	// Create Coinbase TX (Block reward + fees) - Use block timestamp
 	var emptyProposer prt.Address
 	if proposer != emptyProposer {
 		coinbaseTx := p.createCoinbaseTx(proposer, height, totalFees, blockTimestamp)
-		// Coinbase TX를 맨 앞에 추가
+		// Add Coinbase TX to the front
 		validTxs = append([]*Transaction{coinbaseTx}, validTxs...)
 		logger.Info("[SetBlock] Coinbase TX created: reward=", p.GetBlockReward(), " fees=", totalFees, " total=", p.GetBlockReward()+totalFees)
 	}
 
 	txs := validTxs
 
-	// 머클 루트 계산
+	// Calculate Merkle root
 	merkleRoot := calculateMerkleRoot(txs)
 
-	// 헤더 구성
+	// Configure header
 	blkHeader := &BlockHeader{
 		Version:    p.cfg.Version.Protocol,
 		Height:     height,
@@ -105,22 +105,22 @@ func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Add
 		Proposer:     proposer,
 	}
 
-	// 블록 해시는 Header만으로 계산 (Header에 MerkleRoot가 이미 포함되어 있어 트랜잭션 무결성 보장)
+	// Block hash is calculated only with Header (Header already includes MerkleRoot so transaction integrity is guaranteed)
 	blkHash := utils.Hash(blk.Header)
 	blk.Header.Hash = blkHash
 
 	return blk
 }
 
-// createCoinbaseTx Coinbase 트랜잭션 생성 (블록 보상 + 수수료를 제안자에게 지급)
+// createCoinbaseTx creates Coinbase transaction (Pay block reward + fees to proposer)
 func (p *BlockChain) createCoinbaseTx(proposer prt.Address, height uint64, totalFees uint64, blockTimestamp int64) *Transaction {
 	blockReward := p.GetBlockReward()
 	totalReward := blockReward + totalFees
 
 	coinbaseTx := &Transaction{
 		Version:   p.cfg.Version.Transaction,
-		Timestamp: blockTimestamp, // 블록 타임스탬프 사용 (모든 노드에서 동일한 값)
-		Inputs:    []*TxInput{},   // Coinbase TX는 Input이 없음
+		Timestamp: blockTimestamp, // Use block timestamp (same value across all nodes)
+		Inputs:    []*TxInput{},   // Coinbase TX has no Inputs
 		Outputs: []*TxOutput{
 			{
 				Address: proposer,
@@ -129,21 +129,21 @@ func (p *BlockChain) createCoinbaseTx(proposer prt.Address, height uint64, total
 			},
 		},
 		Memo: fmt.Sprintf("Block %d Coinbase: reward=%d, fees=%d", height, blockReward, totalFees),
-		Data: []byte{}, // 빈 데이터 (nil과 구분하기 위해 명시적으로 설정)
+		Data: []byte{}, // Empty data (explicitly set to distinguish from nil)
 	}
 
-	// TX ID 계산
+	// Calculate TX ID
 	coinbaseTx.ID = utils.Hash(coinbaseTx)
 
 	return coinbaseTx
 }
 
-// SignBlock 블록에 서명 추가
+// SignBlock adds signature to block
 func (blk *Block) SignBlock(signature prt.Signature) {
 	blk.Signature = signature
 }
 
-// TOOD: 모듈화 여부는 이후에 내용이 많아질 경우
+// TODO: Modularize if content grows larger later
 // func (p *BlockChain) setBlockHeader(height uint64, prevHash, merkleRoot prt.Hash) *BlockHeader {
 // 	blkHeader := &BlockHeader{
 // 		Version:    p.cfg.Version.Protocol,
@@ -237,7 +237,7 @@ func (p *BlockChain) saveTxData(batch *leveldb.Batch, blk Block) error {
 		// TODO: tx hash -> tx status
 		// txStatusKey := utils.GetTxStatusKey()
 
-		// TODO: whole은 추후 deprecated 가능성 존재
+		// TODO: 'whole' might be deprecated later
 		// whole input tx
 		txInputsKey := utils.GetTxInputKey(tx.ID, prt.WholeTxIdx)
 		inputsBytes, err := utils.SerializeData(tx.Inputs, utils.SerializationFormatGob)
@@ -285,7 +285,7 @@ func (p *BlockChain) GetBlockByHeight(height uint64) (*Block, error) {
 	return p.getBlockByHeightNoLock(height)
 }
 
-// getBlockByHeightNoLock lock 없이 블록 조회 (내부용)
+// getBlockByHeightNoLock gets block without lock (internal use)
 func (p *BlockChain) getBlockByHeightNoLock(height uint64) (*Block, error) {
 	// block height -> block hash bytes
 	heightKey := utils.GetBlockHeightKey(height)
@@ -335,14 +335,14 @@ func (p *BlockChain) GetBlockByHash(hash prt.Hash) (*Block, error) {
 	return &block, nil
 }
 
-// ValidateBlock은 validate.go로 이동됨
+// ValidateBlock moved to validate.go
 
-// BlockToJSON 블록을 JSON 형식으로 변환
+// blockToJSON converts block to JSON format
 func blockToJSON(block interface{}) ([]byte, error) {
 	return utils.SerializeData(block, utils.SerializationFormatJSON)
 }
 
-// JSONToBlock JSON 형식에서 블록으로 변환
+// jsonToBlock converts JSON format to block
 func jsonToBlock(data []byte, block interface{}) error {
 	return utils.DeserializeData(data, block, utils.SerializationFormatJSON)
 }

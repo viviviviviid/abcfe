@@ -12,14 +12,14 @@ import (
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
 
-// HashToString Hash 타입을 16진수 문자열로 변환
+// HashToString converts Hash type to hex string
 func HashToString(hash prt.Hash) string {
 	return hex.EncodeToString(hash[:])
 }
 
-// StringToHash 16진수 문자열을 Hash 타입으로 변환
+// StringToHash converts hex string to Hash type
 func StringToHash(str string) (prt.Hash, error) {
-	// 0x 접두사 제거
+	// Remove 0x prefix
 	if len(str) >= 2 && str[0:2] == "0x" {
 		str = str[2:]
 	}
@@ -28,9 +28,9 @@ func StringToHash(str string) (prt.Hash, error) {
 		return prt.Hash{}, fmt.Errorf("invalid hash string: %v", err)
 	}
 
-	// 해시 길이 검증
+	// Validate hash length
 	if len(bytes) != 32 {
-		return prt.Hash{}, fmt.Errorf("invalid hash lenght: %d (need 32 bytes)", len(bytes))
+		return prt.Hash{}, fmt.Errorf("invalid hash length: %d (need 32 bytes)", len(bytes))
 	}
 
 	var hash prt.Hash
@@ -38,37 +38,37 @@ func StringToHash(str string) (prt.Hash, error) {
 	return hash, nil
 }
 
-// BytesToHash 바이트 배열을 Hash 타입으로 변환
+// BytesToHash converts byte array to Hash type
 func BytesToHash(bytes []byte) prt.Hash {
 	return prt.Hash(bytes)
 }
 
-// HashToBytes Hash 타입을 바이트 배열로 변환
+// HashToBytes converts Hash type to byte array
 func HashToBytes(hash prt.Hash) []byte {
 	bytes := make([]byte, len(hash))
 	copy(bytes, hash[:])
 	return bytes
 }
 
-// AddressToString Address 타입을 16진수 문자열로 변환
+// AddressToString converts Address type to hex string
 func AddressToString(address prt.Address) string {
 	return hex.EncodeToString(address[:])
 }
 
-// StringToAddress 16진수 문자열을 Address 타입으로 변환
+// StringToAddress converts hex string to Address type
 func StringToAddress(str string) (prt.Address, error) {
-	// 0x 접두사 제거
+	// Remove 0x prefix
 	if len(str) >= 2 && str[0:2] == "0x" {
 		str = str[2:]
 	}
 	bytes, err := hex.DecodeString(str)
 	if err != nil {
-		return prt.Address{}, fmt.Errorf("잘못된 주소 문자열: %v", err)
+		return prt.Address{}, fmt.Errorf("invalid address string: %v", err)
 	}
 
-	// 주소 길이 검증
+	// Validate address length
 	if len(bytes) != 20 {
-		return prt.Address{}, fmt.Errorf("잘못된 주소 길이: %d (20바이트 필요)", len(bytes))
+		return prt.Address{}, fmt.Errorf("invalid address length: %d (20 bytes required)", len(bytes))
 	}
 
 	var address prt.Address
@@ -76,25 +76,25 @@ func StringToAddress(str string) (prt.Address, error) {
 	return address, nil
 }
 
-// SignatureToString Signature 타입을 16진수 문자열로 변환
+// SignatureToString converts Signature type to hex string
 func SignatureToString(sig prt.Signature) string {
 	return hex.EncodeToString(sig[:])
 }
 
-// StringToSignature 16진수 문자열을 Signature 타입으로 변환
+// StringToSignature converts hex string to Signature type
 func StringToSignature(str string) (prt.Signature, error) {
-	// 0x 접두사 제거
+	// Remove 0x prefix
 	if len(str) >= 2 && str[0:2] == "0x" {
 		str = str[2:]
 	}
 	bytes, err := hex.DecodeString(str)
 	if err != nil {
-		return prt.Signature{}, fmt.Errorf("잘못된 서명 문자열: %v", err)
+		return prt.Signature{}, fmt.Errorf("invalid signature string: %v", err)
 	}
 
-	// 서명 길이 검증 (ECDSA ASN.1 서명은 가변 길이, 최대 72바이트)
+	// Validate signature length (ECDSA ASN.1 signature is variable length, max 72 bytes)
 	if len(bytes) > 72 {
-		return prt.Signature{}, fmt.Errorf("잘못된 서명 길이: %d (최대 72바이트)", len(bytes))
+		return prt.Signature{}, fmt.Errorf("invalid signature length: %d (max 72 bytes)", len(bytes))
 	}
 
 	var sig prt.Signature
@@ -102,14 +102,14 @@ func StringToSignature(str string) (prt.Signature, error) {
 	return sig, nil
 }
 
-// 직렬화 방식 상수
+// Serialization format constants
 const (
 	SerializationFormatGob = iota
 	SerializationFormatJSON
 )
 
-// SerializeData 객체를 바이트 배열로 직렬화
-// format: 직렬화 방식 (SerializationFormatGob 또는 SerializationFormatJSON)
+// SerializeData serialize object to byte array
+// format: serialization format (SerializationFormatGob or SerializationFormatJSON)
 func SerializeData(data interface{}, format int) ([]byte, error) {
 	switch format {
 	case SerializationFormatGob:
@@ -117,12 +117,12 @@ func SerializeData(data interface{}, format int) ([]byte, error) {
 	case SerializationFormatJSON:
 		return json.Marshal(data)
 	default:
-		return nil, fmt.Errorf("지원하지 않는 직렬화 형식: %d", format)
+		return nil, fmt.Errorf("unsupported serialization format: %d", format)
 	}
 }
 
-// DeserializeData 바이트 배열을 객체로 역직렬화
-// format: 직렬화 방식 (SerializationFormatGob 또는 SerializationFormatJSON)
+// DeserializeData deserialize byte array to object
+// format: serialization format (SerializationFormatGob or SerializationFormatJSON)
 func DeserializeData(data []byte, result interface{}, format int) error {
 	switch format {
 	case SerializationFormatGob:
@@ -130,48 +130,48 @@ func DeserializeData(data []byte, result interface{}, format int) error {
 	case SerializationFormatJSON:
 		return json.Unmarshal(data, result)
 	default:
-		return fmt.Errorf("지원하지 않는 직렬화 형식: %d", format)
+		return fmt.Errorf("unsupported serialization format: %d", format)
 	}
 }
 
-// gobEncode Gob 형식으로 데이터 인코딩
+// gobEncode encode data in Gob format
 func gobEncode(data interface{}) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	if err := enc.Encode(data); err != nil {
-		return nil, fmt.Errorf("Gob 인코딩 오류: %w", err)
+		return nil, fmt.Errorf("Gob encoding error: %w", err)
 	}
 	return buf.Bytes(), nil
 }
 
-// gobDecode Gob 형식으로 데이터 디코딩
+// gobDecode decode data in Gob format
 func gobDecode(data []byte, result interface{}) error {
 	buf := bytes.NewBuffer(data)
 	dec := gob.NewDecoder(buf)
 	if err := dec.Decode(result); err != nil {
-		return fmt.Errorf("Gob 디코딩 오류: %w", err)
+		return fmt.Errorf("Gob decoding error: %w", err)
 	}
 	return nil
 }
 
-// Uint64ToString uint64 값을 문자열로 변환
+// Uint64ToString converts uint64 value to string
 func Uint64ToString(value uint64) string {
 	return strconv.FormatUint(value, 10)
 }
 
-// StringToUint64 문자열을 uint64 값으로 변환
+// StringToUint64 converts string to uint64 value
 func StringToUint64(s string) (uint64, error) {
 	return strconv.ParseUint(s, 10, 64)
 }
 
-// Uint64ToBytes uint64 값을 바이트 배열로 변환 (DB 키용)
+// Uint64ToBytes converts uint64 value to byte array (for DB key)
 func Uint64ToBytes(value uint64) []byte {
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, value)
 	return buf
 }
 
-// BytesToUint64 바이트 배열에서 uint64 값 추출
+// BytesToUint64 extracts uint64 value from byte array
 func BytesToUint64(data []byte) uint64 {
 	return binary.BigEndian.Uint64(data)
 }

@@ -12,9 +12,9 @@ import (
 )
 
 type Wallet struct {
-	Address       prt.Address       // 20바이트 주소
-	PrivateKey    *ecdsa.PrivateKey // ECDSA 개인키
-	PublicKey     *ecdsa.PublicKey  // ECDSA 공개키
+	Address       prt.Address       // 20-byte address
+	PrivateKey    *ecdsa.PrivateKey // ECDSA private key
+	PublicKey     *ecdsa.PublicKey  // ECDSA public key
 	WalletManager *WalletManager
 }
 
@@ -24,7 +24,7 @@ func NewWallet(keystore *WalletManager) *Wallet {
 	}
 }
 
-// 새 지갑 생성
+// Create new wallet
 func (w *Wallet) CreateWallet() error {
 	privateKey, publicKey, err := crypto.GenerateKeyPair()
 	if err != nil {
@@ -41,17 +41,17 @@ func (w *Wallet) CreateWallet() error {
 	return nil
 }
 
-// 트랜잭션 서명
+// Sign transaction
 func (w *Wallet) SignTransaction(tx *core.Transaction) (*prt.Signature, error) {
 	if w.PrivateKey == nil {
 		return nil, fmt.Errorf("wallet not unlocked")
 	}
 
-	// 트랜잭션 해시 계산
+	// Calculate transaction hash
 	txHash := utils.Hash(tx)
 	txHashBytes := utils.HashToBytes(txHash)
 
-	// ECDSA 서명
+	// ECDSA signature
 	signature, err := ecdsa.SignASN1(rand.Reader, w.PrivateKey, txHashBytes)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign transaction: %w", err)
@@ -63,18 +63,18 @@ func (w *Wallet) SignTransaction(tx *core.Transaction) (*prt.Signature, error) {
 	return &sig, nil
 }
 
-// 서명 검증
+// Verify signature
 func (w *Wallet) VerifySignature(tx *core.Transaction, sig *prt.Signature, address prt.Address) bool {
-	// 트랜잭션 해시 계산
+	// Calculate transaction hash
 	txHash := utils.Hash(tx)
 	txHashBytes := utils.HashToBytes(txHash)
 
-	// ECDSA 서명 검증
+	// Verify ECDSA signature
 	return ecdsa.VerifyASN1(w.PublicKey, txHashBytes, sig[:])
 }
 
-// 트랜잭션 생성
+// Create transaction
 func (w *Wallet) CreateTransaction() (*core.Transaction, error) {
-	// TODO: 트랜잭션 생성 로직 구현
+	// TODO: Implement transaction creation logic
 	return nil, fmt.Errorf("not implemented yet")
 }

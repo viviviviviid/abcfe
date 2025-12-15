@@ -8,7 +8,7 @@ import (
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
 
-// BlockProposal 블록 제안 정보
+// BlockProposal block proposal info
 type BlockProposal struct {
 	Height     uint64        `json:"height"`
 	Round      uint32        `json:"round"`
@@ -18,14 +18,14 @@ type BlockProposal struct {
 	Timestamp  int64         `json:"timestamp"`
 }
 
-// Proposer 블록 제안자
+// Proposer block proposer
 type Proposer struct {
 	Validator    *Validator
-	PrivateKey   []byte // 서명을 위한 개인키
+	PrivateKey   []byte // Private key for signing
 	CurrentRound uint32
 }
 
-// NewProposer 새 제안자 생성
+// NewProposer creates new proposer
 func NewProposer(validator *Validator, privateKey []byte) *Proposer {
 	return &Proposer{
 		Validator:    validator,
@@ -34,13 +34,13 @@ func NewProposer(validator *Validator, privateKey []byte) *Proposer {
 	}
 }
 
-// ProposeBlock 블록 제안 생성
+// ProposeBlock creates block proposal
 func (p *Proposer) ProposeBlock(height uint64, blockHash prt.Hash, timestamp int64) (*BlockProposal, error) {
 	if p.Validator == nil {
 		return nil, fmt.Errorf("validator not set")
 	}
 
-	// 블록 해시에 서명
+	// Sign block hash
 	sig, err := p.signBlockHash(blockHash)
 	if err != nil {
 		return nil, fmt.Errorf("failed to sign block: %w", err)
@@ -58,7 +58,7 @@ func (p *Proposer) ProposeBlock(height uint64, blockHash prt.Hash, timestamp int
 	return proposal, nil
 }
 
-// signBlockHash 블록 해시에 서명
+// signBlockHash signs block hash
 func (p *Proposer) signBlockHash(blockHash prt.Hash) (prt.Signature, error) {
 	privateKey, err := crypto.BytesToPrivateKey(p.PrivateKey)
 	if err != nil {
@@ -71,7 +71,7 @@ func (p *Proposer) signBlockHash(blockHash prt.Hash) (prt.Signature, error) {
 		return prt.Signature{}, err
 	}
 
-	// 서명 실제 길이 확인
+	// Check actual signature length
 	sigLen := len(sig)
 	for sigLen > 0 && sig[sigLen-1] == 0 {
 		sigLen--
@@ -81,27 +81,27 @@ func (p *Proposer) signBlockHash(blockHash prt.Hash) (prt.Signature, error) {
 	return sig, nil
 }
 
-// VerifyProposal 블록 제안 검증
+// VerifyProposal verifies block proposal
 func VerifyProposal(proposal *BlockProposal, validator *Validator) bool {
 	if proposal == nil || validator == nil {
 		return false
 	}
 
-	// 제안자 주소 확인
+	// Check proposer address
 	if proposal.ProposerID != validator.Address {
 		return false
 	}
 
-	// 서명 검증
+	// Verify signature
 	return validator.ValidateBlockSignature(proposal.BlockHash, proposal.Signature)
 }
 
-// IncrementRound 라운드 증가
+// IncrementRound increments round
 func (p *Proposer) IncrementRound() {
 	p.CurrentRound++
 }
 
-// ResetRound 라운드 리셋
+// ResetRound resets round
 func (p *Proposer) ResetRound() {
 	p.CurrentRound = 0
 }

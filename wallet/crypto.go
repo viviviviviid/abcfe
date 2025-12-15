@@ -1,7 +1,7 @@
 package wallet
 
 // type CryptoManager struct {
-// 	// 암호화 관리자 (메인 클래스)
+// 	// Crypto manager (main class)
 // }
 
 // func NewCryptoManager() *CryptoManager

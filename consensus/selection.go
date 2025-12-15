@@ -9,55 +9,55 @@ import (
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
 
-// ProposerSelector 제안자 선택기
+// ProposerSelector proposer selector
 type ProposerSelector struct {
 	ValidatorSet *ValidatorSet
 }
 
-// NewProposerSelector 새 제안자 선택기 생성
+// NewProposerSelector creates new proposer selector
 func NewProposerSelector(vs *ValidatorSet) *ProposerSelector {
 	return &ProposerSelector{
 		ValidatorSet: vs,
 	}
 }
 
-// SelectProposer 라운드 로빈 방식으로 제안자 선택
-// BFT 모드: 높이 + 라운드로 제안자 결정 (타임아웃 시 라운드 증가로 다음 제안자 선택)
+// SelectProposer selects proposer using round-robin method
+// BFT mode: Determine proposer by height + round (Select next proposer by increasing round on timeout)
 func (ps *ProposerSelector) SelectProposer(height uint64, round uint32) *Validator {
 	validators := ps.ValidatorSet.GetActiveValidators()
 	if len(validators) == 0 {
 		return nil
 	}
 
-	// 주소 기준으로 정렬 (결정적 순서)
+	// Sort by address (deterministic order)
 	sort.Slice(validators, func(i, j int) bool {
 		return utils.AddressToString(validators[i].Address) < utils.AddressToString(validators[j].Address)
 	})
 
-	// BFT 라운드 로빈: 높이 + 라운드를 사용 (타임아웃 시 다음 제안자로 변경)
+	// BFT round-robin: Use height + round (Change to next proposer on timeout)
 	index := (height + uint64(round)) % uint64(len(validators))
 	return validators[index]
 }
 
-// SelectProposerWeighted 가중치 기반 제안자 선택 (VRF 대신 해시 기반)
-// 스테이킹 금액에 비례한 확률로 선택
+// SelectProposerWeighted Weighted proposer selection (Hash-based instead of VRF)
+// Select with probability proportional to staking amount
 func (ps *ProposerSelector) SelectProposerWeighted(height uint64, prevBlockHash prt.Hash) *Validator {
 	validators := ps.ValidatorSet.GetActiveValidators()
 	if len(validators) == 0 {
 		return nil
 	}
 
-	// 결정적 시드 생성 (height + prevBlockHash)
+	// Generate deterministic seed (height + prevBlockHash)
 	seed := make([]byte, 8+32)
 	binary.BigEndian.PutUint64(seed[:8], height)
 	copy(seed[8:], prevBlockHash[:])
 	hash := sha256.Sum256(seed)
 
-	// 해시를 0~TotalVotingPower 범위의 숫자로 변환
+	// Convert hash to number in 0~TotalVotingPower range
 	hashNum := binary.BigEndian.Uint64(hash[:8])
 	target := hashNum % ps.ValidatorSet.TotalVotingPower
 
-	// 누적 가중치로 선택
+	// Select by cumulative weight
 	var cumulative uint64
 	for _, v := range validators {
 		cumulative += v.VotingPower
@@ -70,7 +70,7 @@ func (ps *ProposerSelector) SelectProposerWeighted(height uint64, prevBlockHash 
 	return validators[0]
 }
 
-// IsProposer 주어진 주소가 해당 높이의 제안자인지 확인
+// IsProposer checks if given address is proposer for the height
 func (ps *ProposerSelector) IsProposer(address prt.Address, height uint64, round uint32) bool {
 	proposer := ps.SelectProposer(height, round)
 	if proposer == nil {
@@ -79,7 +79,7 @@ func (ps *ProposerSelector) IsProposer(address prt.Address, height uint64, round
 	return proposer.Address == address
 }
 
-// GetNextProposers 다음 N개 블록의 제안자 목록
+// GetNextProposers gets list of proposers for next N blocks
 func (ps *ProposerSelector) GetNextProposers(startHeight uint64, count int) []*Validator {
 	proposers := make([]*Validator, count)
 	for i := 0; i < count; i++ {

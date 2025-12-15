@@ -1,45 +1,45 @@
 package rest
 
-// 일반적인 응답 구조체
+// General response structure
 type RestResp struct {
 	Success bool        `json:"success"`
 	Data    interface{} `json:"data,omitempty"`
 	Error   string      `json:"error,omitempty"`
 }
 
-// 블록체인 상태 응답
+// Blockchain status response
 type BlockchainStatResp struct {
 	Height    uint64 `json:"height"`
 	BlockHash string `json:"blockHash"`
 }
 
-// 블록 응답
+// Block response
 type BlockResp struct {
 	Header           BlockHeaderResp       `json:"header"`
-	Transactions     []TxResp              `json:"transactions"`               // 트랜잭션 ID 목록
-	Proposer         string                `json:"proposer"`                   // 블록 제안자 주소
-	Signature        string                `json:"signature"`                  // 제안자 서명
-	CommitSignatures []CommitSignatureResp `json:"commitSignatures,omitempty"` // BFT 검증자 서명들
+	Transactions     []TxResp              `json:"transactions"`               // Transaction ID list
+	Proposer         string                `json:"proposer"`                   // Block proposer address
+	Signature        string                `json:"signature"`                  // Proposer signature
+	CommitSignatures []CommitSignatureResp `json:"commitSignatures,omitempty"` // BFT validator signatures
 }
 
-// BFT 커밋 서명 응답
+// BFT commit signature response
 type CommitSignatureResp struct {
-	ValidatorAddress string `json:"validatorAddress"` // 검증자 주소
-	Signature        string `json:"signature"`        // 검증자 서명
-	// Timestamp        int64  `json:"timestamp"`        // 서명 시간
+	ValidatorAddress string `json:"validatorAddress"` // Validator address
+	Signature        string `json:"signature"`        // Validator signature
+	// Timestamp        int64  `json:"timestamp"`        // Signature time
 }
 
 type BlockHeaderResp struct {
 	Hash       string `json:"hash"`
-	PrevHash   string `json:"prevHash"`   // 이전 블록 해시
-	Version    string `json:"version"`    // 블록체인 프로토콜 버전
-	Height     uint64 `json:"height"`     // 블록 높이 (uint64로 변경)
-	MerkleRoot string `json:"merkleRoot"` // 트랜잭션 머클 루트
-	Timestamp  int64  `json:"timestamp"`  // 블록 생성 시간 (Unix 타임스탬프)
-	// StateRoot  Hash   `json:"stateRoot"`  // 상태 머클 루트 (UTXO 또는 계정 상태)
+	PrevHash   string `json:"prevHash"`   // Previous block hash
+	Version    string `json:"version"`    // Blockchain protocol version
+	Height     uint64 `json:"height"`     // Block height (changed to uint64)
+	MerkleRoot string `json:"merkleRoot"` // Transaction Merkle root
+	Timestamp  int64  `json:"timestamp"`  // Block creation time (Unix timestamp)
+	// StateRoot  Hash   `json:"stateRoot"`  // State Merkle root (UTXO or account state)
 }
 
-// 트랜잭션 응답
+// Transaction response
 type TxResp struct {
 	ID        string        `json:"id"`
 	Version   string        `json:"version"`
@@ -47,19 +47,19 @@ type TxResp struct {
 	Inputs    []interface{} `json:"inputs"`
 	Outputs   []interface{} `json:"outputs"`
 	Memo      string        `json:"memo"`
-	Fee       uint64        `json:"fee"` // 암묵적 수수료 (InputSum - OutputSum)
+	Fee       uint64        `json:"fee"` // Implicit fee (InputSum - OutputSum)
 }
 
 type SubmitTxReq struct {
 	From   string `json:"from"`
 	To     string `json:"to"`
 	Amount uint64 `json:"amount"`
-	Fee    uint64 `json:"fee"` // 수수료 (선택, 0이면 최소 수수료 적용)
+	Fee    uint64 `json:"fee"` // Fee (optional, minimum fee applies if 0)
 	Memo   string `json:"memo"`
 	Data   []byte `json:"data"`
 }
 
-// 서명된 트랜잭션 제출 요청 (클라이언트가 서명)
+// Submit signed transaction request (signed by client)
 type SubmitSignedTxReq struct {
 	Version   string          `json:"version"`
 	Timestamp int64           `json:"timestamp"`
@@ -82,17 +82,17 @@ type TxOutputReq struct {
 	TxType  uint8  `json:"txType"`
 }
 
-// 서버 지갑으로 전송 요청
+// Send request using server wallet
 type SendTxReq struct {
-	AccountIndex int    `json:"accountIndex"` // 지갑 계정 인덱스 (기본 0)
+	AccountIndex int    `json:"accountIndex"` // Wallet account index (default 0)
 	To           string `json:"to"`
 	Amount       uint64 `json:"amount"`
-	Fee          uint64 `json:"fee"` // 수수료 (선택, 0이면 최소 수수료 적용)
+	Fee          uint64 `json:"fee"` // Fee (optional, minimum fee applies if 0)
 	Memo         string `json:"memo"`
 	Data         []byte `json:"data"`
 }
 
-// 지갑 계정 응답
+// Wallet account response
 type WalletAccountResp struct {
 	Index   int    `json:"index"`
 	Address string `json:"address"`

@@ -42,25 +42,25 @@ func GetTxBlockHashKey(txHash prt.Hash) []byte {
 }
 
 // "tx:in:"
-// [사용패턴 1] tx:in:트랜잭션해시:인덱스 = 특정 input 데이터
-// [사용패턴 2] tx:in:트랜잭션해시 = 모든 input 데이터 목록
+// [Usage Pattern 1] tx:in:TxHash:Index = Specific input data
+// [Usage Pattern 2] tx:in:TxHash = All input data list
 func GetTxInputKey(txHash prt.Hash, index int) []byte {
 	txHashStr := HashToString(txHash)
-	if index >= 0 { // index 유무로 특정 / 전체 구분
+	if index >= 0 { // Distinguish specific / all by index existence
 		return []byte(prt.PrefixTxIn + txHashStr + ":" + strconv.Itoa(index))
 	}
-	return []byte(prt.PrefixTxIn + txHashStr) // 모든 입력 데이터 접근
+	return []byte(prt.PrefixTxIn + txHashStr) // Access all input data
 }
 
 // "tx:out:"
-// [사용패턴 1] tx:out:트랜잭션해시:인덱스 = 특정 output 데이터
-// [사용패턴 2] tx:out:트랜잭션해시 = 모든 output 데이터 목록
+// [Usage Pattern 1] tx:out:TxHash:Index = Specific output data
+// [Usage Pattern 2] tx:out:TxHash = All output data list
 func GetTxOutputKey(txHash prt.Hash, index int) []byte {
 	txHashStr := HashToString(txHash)
-	if index >= 0 { // index 유무로 특정 / 전체 구분
+	if index >= 0 { // Distinguish specific / all by index existence
 		return []byte(prt.PrefixTxOut + txHashStr + ":" + strconv.Itoa(index))
 	}
-	return []byte(prt.PrefixTxOut + txHashStr) // 모든 출력 데이터 접근
+	return []byte(prt.PrefixTxOut + txHashStr) // Access all output data
 }
 
 // "utxo:txhash:outputindex"

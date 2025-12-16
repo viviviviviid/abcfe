@@ -15,11 +15,11 @@ var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		return true // 모든 origin 허용 (개발용)
+		return true // Allow all origins (for development)
 	},
 }
 
-// WSEventType 이벤트 타입
+// WSEventType event type
 type WSEventType string
 
 const (
@@ -29,13 +29,13 @@ const (
 	EventConsensusStateChange WSEventType = "consensus_state_change"
 )
 
-// WSMessage WebSocket 메시지 구조
+// WSMessage WebSocket message structure
 type WSMessage struct {
 	Event WSEventType `json:"event"`
 	Data  interface{} `json:"data"`
 }
 
-// WSHub 클라이언트 연결 관리
+// WSHub client connection management
 type WSHub struct {
 	clients    map[*WSClient]bool
 	broadcast  chan WSMessage
@@ -44,14 +44,14 @@ type WSHub struct {
 	mu         sync.RWMutex
 }
 
-// WSClient WebSocket 클라이언트
+// WSClient WebSocket client
 type WSClient struct {
 	hub  *WSHub
 	conn *websocket.Conn
 	send chan []byte
 }
 
-// NewWSHub 새 Hub 생성
+// NewWSHub creates new Hub
 func NewWSHub() *WSHub {
 	return &WSHub{
 		clients:    make(map[*WSClient]bool),
@@ -61,7 +61,7 @@ func NewWSHub() *WSHub {
 	}
 }
 
-// Run Hub 실행
+// Run runs the Hub
 func (h *WSHub) Run() {
 	for {
 		select {
@@ -101,7 +101,7 @@ func (h *WSHub) Run() {
 	}
 }
 
-// BroadcastNewBlock 새 블록 알림 브로드캐스트
+// BroadcastNewBlock broadcasts new block notification
 func (h *WSHub) BroadcastNewBlock(block *core.Block) {
 	blockData := map[string]interface{}{
 		"height":    block.Header.Height,
@@ -117,7 +117,7 @@ func (h *WSHub) BroadcastNewBlock(block *core.Block) {
 	}
 }
 
-// BroadcastNewTransaction 새 트랜잭션 알림 브로드캐스트
+// BroadcastNewTransaction broadcasts new transaction notification
 func (h *WSHub) BroadcastNewTransaction(tx *core.Transaction) {
 	txData := map[string]interface{}{
 		"txId":      utils.HashToString(tx.ID),
@@ -133,14 +133,14 @@ func (h *WSHub) BroadcastNewTransaction(tx *core.Transaction) {
 	}
 }
 
-// GetClientCount 연결된 클라이언트 수 반환
+// GetClientCount returns connected client count
 func (h *WSHub) GetClientCount() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.clients)
 }
 
-// BroadcastConsensusState 컨센서스 상태 변경 브로드캐스트
+// BroadcastConsensusState broadcasts consensus state change
 func (h *WSHub) BroadcastConsensusState(state string, height uint64, round uint32, proposerAddr string) {
 	stateData := map[string]interface{}{
 		"state":        state,
@@ -155,7 +155,7 @@ func (h *WSHub) BroadcastConsensusState(state string, height uint64, round uint3
 	}
 }
 
-// HandleWebSocket WebSocket 연결 핸들러
+// HandleWebSocket WebSocket connection handler
 func HandleWebSocket(hub *WSHub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
@@ -172,7 +172,7 @@ func HandleWebSocket(hub *WSHub) http.HandlerFunc {
 
 		hub.register <- client
 
-		// 클라이언트에게 연결 성공 메시지 전송
+		// Send connection success message to client
 		welcomeMsg := WSMessage{
 			Event: "connected",
 			Data: map[string]interface{}{
@@ -182,13 +182,13 @@ func HandleWebSocket(hub *WSHub) http.HandlerFunc {
 		data, _ := json.Marshal(welcomeMsg)
 		client.send <- data
 
-		// 읽기/쓰기 고루틴 시작
+		// Start read/write goroutines
 		go client.writePump()
 		go client.readPump()
 	}
 }
 
-// writePump 클라이언트에게 메시지 전송
+// writePump sends message to client
 func (c *WSClient) writePump() {
 	defer func() {
 		c.conn.Close()
@@ -197,13 +197,13 @@ func (c *WSClient) writePump() {
 	for {
 		message, ok := <-c.send
 		if !ok {
-			// 채널이 닫혔으면 정상 종료 메시지 전송
+			// If channel closed, send normal close message
 			c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 			return
 		}
 
 		if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
-			// 클라이언트가 연결을 끊었을 때는 정상 종료로 처리
+			// Treat client disconnection as normal closure
 			if websocket.IsUnexpectedCloseError(err,
 				websocket.CloseNormalClosure,
 				websocket.CloseGoingAway,
@@ -217,7 +217,7 @@ func (c *WSClient) writePump() {
 	}
 }
 
-// readPump 클라이언트로부터 메시지 수신
+// readPump receives message from client
 func (c *WSClient) readPump() {
 	defer func() {
 		c.hub.unregister <- c
@@ -227,10 +227,10 @@ func (c *WSClient) readPump() {
 	for {
 		_, _, err := c.conn.ReadMessage()
 		if err != nil {
-			// 정상적인 클라이언트 종료는 에러로 로깅하지 않음
-			// CloseGoingAway (1001): 브라우저 탭 닫기, 페이지 이동
-			// CloseNoStatusReceived (1005): 상태 코드 없이 연결 종료 (브라우저 종료 등)
-			// CloseNormalClosure (1000): 정상 종료
+			// Do not log normal client closure as error
+			// CloseGoingAway (1001): Browser tab close, page navigation
+			// CloseNoStatusReceived (1005): Connection closed without status code (browser closed, etc.)
+			// CloseNormalClosure (1000): Normal closure
 			if websocket.IsUnexpectedCloseError(err, 
 				websocket.CloseNormalClosure,
 				websocket.CloseGoingAway,
@@ -238,11 +238,11 @@ func (c *WSClient) readPump() {
 				websocket.CloseAbnormalClosure) {
 				logger.Error("WebSocket read error:", err)
 			} else {
-				// 정상 종료는 Debug 레벨로만 로깅
+				// Log normal closure only at Debug level
 				logger.Debug("WebSocket client disconnected:", err)
 			}
 			break
 		}
-		// 클라이언트 메시지 처리 (현재는 무시)
+		// Handle client message (currently ignored)
 	}
 }

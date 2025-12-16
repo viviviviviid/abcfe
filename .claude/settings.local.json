@@ -37,7 +37,8 @@
       "Bash(tee:*)",
       "Bash(go run:*)",
       "Bash(jq:*)",
-      "Bash(./stop_all_nodes.sh:*)"
+      "Bash(./stop_all_nodes.sh:*)",
+      "Bash(bash:*)"
     ],
     "deny": [],
     "ask": []

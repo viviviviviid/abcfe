@@ -13,37 +13,37 @@ import (
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
 
-// P2PService P2P 네트워킹 서비스
+// P2PService P2P networking service
 type P2PService struct {
 	mu sync.RWMutex
 
 	Node       *Node
 	Blockchain *core.BlockChain
 
-	// 메시지 핸들러
+	// Message handler
 	blockHandler    func(*core.Block)
 	txHandler       func(*core.Transaction)
 	proposalHandler func(height uint64, round uint32, blockHash prt.Hash, block *core.Block)
 	voteHandler     func(height uint64, round uint32, voteType uint8, blockHash prt.Hash, voterID prt.Address, signature prt.Signature)
 
-	// 메시지 중복 방지 캐시 (무한 릴레이 방지)
+	// Message deduplication cache (prevent infinite relay)
 	seenMessages   map[string]time.Time
 	seenMessagesMu sync.RWMutex
 
-	// Proposal/Vote 중복 방지 (height:round:proposer 기준)
+	// Proposal/Vote deduplication (based on height:round:proposer)
 	seenProposals   map[string]time.Time // key: "height:round:proposer"
 	seenProposalsMu sync.RWMutex
 	seenVotes       map[string]time.Time // key: "height:round:voteType:voter"
 	seenVotesMu     sync.RWMutex
 
-	// 연결 시도 중인 피어 ID 추적 (중복 연결 방지)
+	// Track connecting peer IDs (prevent duplicate connections)
 	connectingPeers   map[string]time.Time
 	connectingPeersMu sync.Mutex
 
 	running bool
 }
 
-// NewP2PService 새 P2P 서비스 생성
+// NewP2PService creates a new P2P service
 func NewP2PService(address string, port int, networkID string, blockchain *core.BlockChain) (*P2PService, error) {
 	node, err := NewNode(address, port, networkID)
 	if err != nil {
@@ -60,17 +60,17 @@ func NewP2PService(address string, port int, networkID string, blockchain *core.
 		running:         false,
 	}
 
-	// 노드에도 블록체인 참조 설정 (핸드셰이크용)
+	// Set blockchain reference to node (for handshake)
 	node.Blockchain = blockchain
 
-	// 메시지 핸들러 설정
+	// Set message handler
 	node.MessageHandler = service.handleMessage
 
-	// 피어 연결 완료 시 피어 목록 요청 (피어 디스커버리)
+	// Request peer list on peer connection (peer discovery)
 	node.OnPeerConnected = func(peer *Peer) {
-		// 잠시 대기 후 피어 목록 요청 (핸드셰이크 완전히 끝난 후)
+		// Wait a moment then request peer list (after handshake completes)
 		go func() {
-			// 100ms 대기
+			// Wait 100ms
 			select {
 			case <-node.stopCh:
 				return
@@ -84,7 +84,7 @@ func NewP2PService(address string, port int, networkID string, blockchain *core.
 		}()
 	}
 
-	// 주기적 피어 교환 (30초마다)
+	// Periodic peer exchange (every 30 seconds)
 	node.OnPeerExchange = func(peers []*Peer) {
 		logger.Debug("[P2P] Periodic peer exchange with ", len(peers), " peers")
 		for _, peer := range peers {
@@ -101,7 +101,7 @@ func NewP2PService(address string, port int, networkID string, blockchain *core.
 	return service, nil
 }
 
-// Start P2P 서비스 시작
+// Start P2P service
 func (s *P2PService) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -118,7 +118,7 @@ func (s *P2PService) Start() error {
 	return nil
 }
 
-// Stop P2P 서비스 종료
+// Stop P2P service
 func (s *P2PService) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -135,41 +135,41 @@ func (s *P2PService) Stop() error {
 	return nil
 }
 
-// SetBlockHandler 블록 수신 핸들러 설정
+// SetBlockHandler sets block reception handler
 func (s *P2PService) SetBlockHandler(handler func(*core.Block)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.blockHandler = handler
 }
 
-// SetTxHandler 트랜잭션 수신 핸들러 설정
+// SetTxHandler sets transaction reception handler
 func (s *P2PService) SetTxHandler(handler func(*core.Transaction)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.txHandler = handler
 }
 
-// SetProposalHandler 블록 제안 수신 핸들러 설정
+// SetProposalHandler sets block proposal reception handler
 func (s *P2PService) SetProposalHandler(handler func(height uint64, round uint32, blockHash prt.Hash, block *core.Block)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.proposalHandler = handler
 }
 
-// SetVoteHandler 투표 수신 핸들러 설정
+// SetVoteHandler sets vote reception handler
 func (s *P2PService) SetVoteHandler(handler func(height uint64, round uint32, voteType uint8, blockHash prt.Hash, voterID prt.Address, signature prt.Signature)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.voteHandler = handler
 }
 
-// handleMessage 수신 메시지 처리
+// handleMessage processes received message
 func (s *P2PService) handleMessage(msg *Message, peer *Peer) {
 	switch msg.Type {
 	case MsgTypePing:
 		s.handlePing(peer)
 	case MsgTypePong:
-		// Pong은 LastSeen 업데이트만 (handlePeer에서 처리됨)
+		// Pong updates LastSeen only (handled in handlePeer)
 	case MsgTypeNewBlock:
 		s.handleNewBlock(msg, peer)
 	case MsgTypeNewTx:
@@ -189,13 +189,13 @@ func (s *P2PService) handleMessage(msg *Message, peer *Peer) {
 	}
 }
 
-// handlePing Ping 처리
+// handlePing processes Ping
 func (s *P2PService) handlePing(peer *Peer) {
 	pong := NewMessage(MsgTypePong, nil, s.Node.ID)
 	s.Node.sendMessage(peer, pong)
 }
 
-// handleNewBlock 새 블록 수신 처리
+// handleNewBlock processes new block reception
 func (s *P2PService) handleNewBlock(msg *Message, peer *Peer) {
 	logger.Debug("[P2P] Received new block message from peer: ", peer.Address)
 
@@ -207,7 +207,7 @@ func (s *P2PService) handleNewBlock(msg *Message, peer *Peer) {
 
 	logger.Debug("[P2P] Block payload - height: ", payload.Height)
 
-	// 블록 역직렬화
+	// Deserialize block
 	var block core.Block
 	if err := utils.DeserializeData(payload.BlockData, &block, utils.SerializationFormatGob); err != nil {
 		logger.Error("[P2P] Failed to deserialize block: ", err)
@@ -216,7 +216,7 @@ func (s *P2PService) handleNewBlock(msg *Message, peer *Peer) {
 
 	logger.Debug("[P2P] Received block height: ", block.Header.Height, " hash: ", fmt.Sprintf("%x", block.Header.Hash[:8]))
 
-	// 블록 핸들러 호출
+	// Call block handler
 	s.mu.RLock()
 	handler := s.blockHandler
 	s.mu.RUnlock()
@@ -228,20 +228,20 @@ func (s *P2PService) handleNewBlock(msg *Message, peer *Peer) {
 	}
 }
 
-// handleNewTx 새 트랜잭션 수신 처리
+// handleNewTx processes new transaction reception
 func (s *P2PService) handleNewTx(msg *Message, peer *Peer) {
 	var payload NewTxPayload
 	if err := UnmarshalPayload(msg.Payload, &payload); err != nil {
 		return
 	}
 
-	// 트랜잭션 역직렬화
+	// Deserialize transaction
 	var tx core.Transaction
 	if err := utils.DeserializeData(payload.TxData, &tx, utils.SerializationFormatGob); err != nil {
 		return
 	}
 
-	// 트랜잭션 핸들러 호출
+	// Call transaction handler
 	s.mu.RLock()
 	handler := s.txHandler
 	s.mu.RUnlock()
@@ -251,7 +251,7 @@ func (s *P2PService) handleNewTx(msg *Message, peer *Peer) {
 	}
 }
 
-// handleGetBlocks 블록 요청 처리
+// handleGetBlocks processes block request
 func (s *P2PService) handleGetBlocks(msg *Message, peer *Peer) {
 	var payload GetBlocksPayload
 	if err := UnmarshalPayload(msg.Payload, &payload); err != nil {
@@ -266,7 +266,7 @@ func (s *P2PService) handleGetBlocks(msg *Message, peer *Peer) {
 		return
 	}
 
-	// 요청된 블록들 가져오기
+	// Get requested blocks
 	blocksData := make([][]byte, 0)
 	for height := payload.StartHeight; height <= payload.EndHeight && len(blocksData) < 100; height++ {
 		block, err := s.Blockchain.GetBlockByHeight(height)
@@ -284,7 +284,7 @@ func (s *P2PService) handleGetBlocks(msg *Message, peer *Peer) {
 
 	logger.Info("[P2P] Sending ", len(blocksData), " blocks to ", peer.Address)
 
-	// 블록 응답 전송
+	// Send block response
 	responsePayload := BlocksPayload{BlocksData: blocksData}
 	payloadBytes, err := MarshalPayload(responsePayload)
 	if err != nil {
@@ -298,7 +298,7 @@ func (s *P2PService) handleGetBlocks(msg *Message, peer *Peer) {
 	}
 }
 
-// handleBlocks 블록 응답 처리
+// handleBlocks processes block response
 func (s *P2PService) handleBlocks(msg *Message, peer *Peer) {
 	var payload BlocksPayload
 	if err := UnmarshalPayload(msg.Payload, &payload); err != nil {
@@ -308,7 +308,7 @@ func (s *P2PService) handleBlocks(msg *Message, peer *Peer) {
 
 	logger.Info("[P2P] Received ", len(payload.BlocksData), " blocks from ", peer.Address)
 
-	// 수신된 블록들 처리
+	// Process received blocks
 	s.mu.RLock()
 	handler := s.blockHandler
 	s.mu.RUnlock()
@@ -328,7 +328,7 @@ func (s *P2PService) handleBlocks(msg *Message, peer *Peer) {
 	}
 }
 
-// handleProposal 블록 제안 수신 처리
+// handleProposal processes block proposal reception
 func (s *P2PService) handleProposal(msg *Message, peer *Peer) {
 	logger.Debug("[P2P] Received proposal message from peer: ", peer.Address)
 
@@ -338,7 +338,7 @@ func (s *P2PService) handleProposal(msg *Message, peer *Peer) {
 		return
 	}
 
-	// 중복 Proposal 체크 (같은 height:round:proposer는 한 번만 처리)
+	// Check duplicate Proposal (process same height:round:proposer only once)
 	proposalKey := fmt.Sprintf("%d:%d:%s", payload.Height, payload.Round, payload.ProposerID)
 	if s.hasSeenProposal(proposalKey) {
 		logger.Debug("[P2P] Duplicate proposal ignored: ", proposalKey)
@@ -346,7 +346,7 @@ func (s *P2PService) handleProposal(msg *Message, peer *Peer) {
 	}
 	s.markProposalSeen(proposalKey)
 
-	// 블록 역직렬화
+	// Deserialize block
 	var block core.Block
 	if err := utils.DeserializeData(payload.BlockData, &block, utils.SerializationFormatGob); err != nil {
 		logger.Error("[P2P] Failed to deserialize proposed block: ", err)
@@ -355,10 +355,10 @@ func (s *P2PService) handleProposal(msg *Message, peer *Peer) {
 
 	logger.Info("[P2P] Received proposal - height: ", payload.Height, ", round: ", payload.Round, ", proposer: ", payload.ProposerID[:16])
 
-	// 다른 피어들에게 릴레이 (발신자 제외)
+	// Relay to other peers (exclude sender)
 	s.relayMessage(msg, peer)
 
-	// 제안 핸들러 호출
+	// Call proposal handler
 	s.mu.RLock()
 	handler := s.proposalHandler
 	s.mu.RUnlock()
@@ -370,7 +370,7 @@ func (s *P2PService) handleProposal(msg *Message, peer *Peer) {
 	}
 }
 
-// handleVote 투표 수신 처리
+// handleVote processes vote reception
 func (s *P2PService) handleVote(msg *Message, peer *Peer) {
 	logger.Debug("[P2P] Received vote message from peer: ", peer.Address)
 
@@ -380,7 +380,7 @@ func (s *P2PService) handleVote(msg *Message, peer *Peer) {
 		return
 	}
 
-	// 중복 Vote 체크 (같은 height:round:voteType:voter는 한 번만 처리)
+	// Check duplicate Vote (process same height:round:voteType:voter only once)
 	voteKey := fmt.Sprintf("%d:%d:%d:%s", payload.Height, payload.Round, payload.VoteType, payload.VoterID)
 	if s.hasSeenVote(voteKey) {
 		logger.Debug("[P2P] Duplicate vote ignored: ", voteKey)
@@ -394,17 +394,17 @@ func (s *P2PService) handleVote(msg *Message, peer *Peer) {
 	}
 	logger.Debug("[P2P] Received ", voteTypeStr, " - height: ", payload.Height, ", round: ", payload.Round, ", voter: ", payload.VoterID[:16])
 
-	// 다른 피어들에게 릴레이 (발신자 제외)
+	// Relay to other peers (exclude sender)
 	s.relayMessage(msg, peer)
 
-	// VoterID를 Address로 변환
+	// Convert VoterID to Address
 	voterAddr, err := utils.StringToAddress(payload.VoterID)
 	if err != nil {
 		logger.Error("[P2P] Failed to parse voter address: ", err)
 		return
 	}
 
-	// 투표 핸들러 호출
+	// Call vote handler
 	s.mu.RLock()
 	handler := s.voteHandler
 	s.mu.RUnlock()
@@ -416,31 +416,31 @@ func (s *P2PService) handleVote(msg *Message, peer *Peer) {
 	}
 }
 
-// handleGetPeers 피어 목록 요청 처리
+// handleGetPeers processes peer list request
 func (s *P2PService) handleGetPeers(msg *Message, peer *Peer) {
 	logger.Debug("[P2P] Received GetPeers request from ", peer.Address)
 
-	// 현재 연결된 피어 목록 수집
+	// Collect currently connected peer list
 	peers := s.Node.GetPeers()
 	peerInfos := make([]PeerInfo, 0, len(peers))
 
 	for _, p := range peers {
-		// 요청자 자신은 제외
+		// Exclude requester itself
 		if p.ID == peer.ID {
 			continue
 		}
-		// Active 상태인 피어만 공유
+		// Share only Active peers
 		if p.State != PeerStateActive {
 			continue
 		}
 
-		// 피어 주소에서 호스트와 포트 추출
+		// Extract host and port from peer address
 		host, port := parseAddress(p.Address)
 		if host == "" {
 			continue
 		}
 
-		// Inbound 연결인 경우 ListenPort 사용
+		// Use ListenPort for Inbound connection
 		peerPort := port
 		if p.Inbound && p.Port > 0 {
 			peerPort = p.Port
@@ -455,7 +455,7 @@ func (s *P2PService) handleGetPeers(msg *Message, peer *Peer) {
 
 	logger.Info("[P2P] Sending ", len(peerInfos), " peers to ", peer.Address)
 
-	// 응답 전송
+	// Send response
 	payload := PeersPayload{Peers: peerInfos}
 	payloadBytes, err := MarshalPayload(payload)
 	if err != nil {
@@ -469,7 +469,7 @@ func (s *P2PService) handleGetPeers(msg *Message, peer *Peer) {
 	}
 }
 
-// handlePeers 피어 목록 수신 처리
+// handlePeers processes peer list reception
 func (s *P2PService) handlePeers(msg *Message, peer *Peer) {
 	var payload PeersPayload
 	if err := UnmarshalPayload(msg.Payload, &payload); err != nil {
@@ -479,24 +479,24 @@ func (s *P2PService) handlePeers(msg *Message, peer *Peer) {
 
 	logger.Debug("[P2P] Received ", len(payload.Peers), " peers from ", peer.Address)
 
-	// 수신한 피어들에게 연결 시도
+	// Attempt connection to received peers
 	for _, peerInfo := range payload.Peers {
-		// 이미 연결된 피어인지 확인
+		// Check if already connected peer
 		if s.isConnectedToPeer(peerInfo.ID) {
 			continue
 		}
 
-		// 자기 자신인지 확인
+		// Check if self
 		if peerInfo.ID == s.Node.ID {
 			continue
 		}
 
-		// 이미 연결 시도 중인 피어인지 확인 (중복 연결 방지)
+		// Check if already connecting peer (prevent duplicate connection)
 		if !s.tryMarkConnecting(peerInfo.ID) {
 			continue
 		}
 
-		// 연결 시도 (비동기)
+		// Attempt connection (async)
 		address := fmt.Sprintf("%s:%d", peerInfo.Address, peerInfo.Port)
 		go func(addr string, id string) {
 			defer s.unmarkConnecting(id)
@@ -509,12 +509,12 @@ func (s *P2PService) handlePeers(msg *Message, peer *Peer) {
 	}
 }
 
-// tryMarkConnecting 연결 시도 중으로 표시 (이미 시도 중이면 false 반환)
+// tryMarkConnecting marks as connecting (returns false if already connecting)
 func (s *P2PService) tryMarkConnecting(peerID string) bool {
 	s.connectingPeersMu.Lock()
 	defer s.connectingPeersMu.Unlock()
 
-	// 30초 이상 지난 항목은 정리
+	// Clean up items older than 30 seconds
 	threshold := time.Now().Add(-30 * time.Second)
 	for id, t := range s.connectingPeers {
 		if t.Before(threshold) {
@@ -522,7 +522,7 @@ func (s *P2PService) tryMarkConnecting(peerID string) bool {
 		}
 	}
 
-	// 이미 연결 시도 중인지 확인
+	// Check if already connecting
 	if _, exists := s.connectingPeers[peerID]; exists {
 		return false
 	}
@@ -531,14 +531,14 @@ func (s *P2PService) tryMarkConnecting(peerID string) bool {
 	return true
 }
 
-// unmarkConnecting 연결 시도 완료 표시
+// unmarkConnecting marks connection attempt completion
 func (s *P2PService) unmarkConnecting(peerID string) {
 	s.connectingPeersMu.Lock()
 	defer s.connectingPeersMu.Unlock()
 	delete(s.connectingPeers, peerID)
 }
 
-// isConnectedToPeer 특정 피어에 이미 연결되어 있는지 확인
+// isConnectedToPeer checks if already connected to specific peer
 func (s *P2PService) isConnectedToPeer(peerID string) bool {
 	s.Node.mu.RLock()
 	defer s.Node.mu.RUnlock()
@@ -547,15 +547,15 @@ func (s *P2PService) isConnectedToPeer(peerID string) bool {
 	return exists
 }
 
-// RequestPeers 피어 목록 요청
+// RequestPeers requests peer list
 func (s *P2PService) RequestPeers(peer *Peer) error {
 	msg := NewMessage(MsgTypeGetPeers, nil, s.Node.ID)
 	return s.Node.sendMessage(peer, msg)
 }
 
-// parseAddress 주소에서 호스트와 포트 추출
+// parseAddress extracts host and port from address
 func parseAddress(address string) (string, int) {
-	// "host:port" 형태에서 분리
+	// Split from "host:port" format
 	for i := len(address) - 1; i >= 0; i-- {
 		if address[i] == ':' {
 			host := address[:i]
@@ -568,14 +568,14 @@ func parseAddress(address string) (string, int) {
 	return address, 0
 }
 
-// generateMessageID 메시지 고유 ID 생성
+// generateMessageID generates unique message ID
 func (s *P2PService) generateMessageID(msg *Message) string {
-	// 메시지 타입 + 원본 발신자 + 페이로드 해시로 고유 ID 생성
+	// Generate unique ID with message type + original sender + payload hash
 	hash := sha256.Sum256(msg.Payload)
 	return fmt.Sprintf("%d:%s:%s", msg.Type, msg.From, hex.EncodeToString(hash[:8]))
 }
 
-// hasSeenMessage 이미 본 메시지인지 확인
+// hasSeenMessage checks if message already seen
 func (s *P2PService) hasSeenMessage(msgID string) bool {
 	s.seenMessagesMu.RLock()
 	defer s.seenMessagesMu.RUnlock()
@@ -583,13 +583,13 @@ func (s *P2PService) hasSeenMessage(msgID string) bool {
 	return exists
 }
 
-// markMessageSeen 메시지를 본 것으로 표시
+// markMessageSeen marks message as seen
 func (s *P2PService) markMessageSeen(msgID string) {
 	s.seenMessagesMu.Lock()
 	defer s.seenMessagesMu.Unlock()
 	s.seenMessages[msgID] = time.Now()
 
-	// 캐시가 너무 커지면 오래된 항목 정리 (1000개 초과 시)
+	// Clean up old items if cache grows too large (over 1000)
 	if len(s.seenMessages) > 1000 {
 		threshold := time.Now().Add(-60 * time.Second)
 		for id, t := range s.seenMessages {
@@ -600,7 +600,7 @@ func (s *P2PService) markMessageSeen(msgID string) {
 	}
 }
 
-// hasSeenProposal 이미 본 Proposal인지 확인
+// hasSeenProposal checks if Proposal already seen
 func (s *P2PService) hasSeenProposal(key string) bool {
 	s.seenProposalsMu.RLock()
 	defer s.seenProposalsMu.RUnlock()
@@ -608,13 +608,13 @@ func (s *P2PService) hasSeenProposal(key string) bool {
 	return exists
 }
 
-// markProposalSeen Proposal을 본 것으로 표시
+// markProposalSeen marks Proposal as seen
 func (s *P2PService) markProposalSeen(key string) {
 	s.seenProposalsMu.Lock()
 	defer s.seenProposalsMu.Unlock()
 	s.seenProposals[key] = time.Now()
 
-	// 캐시 정리 (500개 초과 시, 30초 이상 된 항목)
+	// Clean up cache (over 500, older than 30s)
 	if len(s.seenProposals) > 500 {
 		threshold := time.Now().Add(-30 * time.Second)
 		for id, t := range s.seenProposals {
@@ -625,7 +625,7 @@ func (s *P2PService) markProposalSeen(key string) {
 	}
 }
 
-// hasSeenVote 이미 본 Vote인지 확인
+// hasSeenVote checks if Vote already seen
 func (s *P2PService) hasSeenVote(key string) bool {
 	s.seenVotesMu.RLock()
 	defer s.seenVotesMu.RUnlock()
@@ -633,13 +633,13 @@ func (s *P2PService) hasSeenVote(key string) bool {
 	return exists
 }
 
-// markVoteSeen Vote를 본 것으로 표시
+// markVoteSeen marks Vote as seen
 func (s *P2PService) markVoteSeen(key string) {
 	s.seenVotesMu.Lock()
 	defer s.seenVotesMu.Unlock()
 	s.seenVotes[key] = time.Now()
 
-	// 캐시 정리 (2000개 초과 시, 30초 이상 된 항목)
+	// Clean up cache (over 2000, older than 30s)
 	if len(s.seenVotes) > 2000 {
 		threshold := time.Now().Add(-30 * time.Second)
 		for id, t := range s.seenVotes {
@@ -650,9 +650,9 @@ func (s *P2PService) markVoteSeen(key string) {
 	}
 }
 
-// relayMessage 메시지를 다른 피어들에게 릴레이 (발신자 제외, 중복 방지)
+// relayMessage relays message to other peers (excluding sender, prevent duplicates)
 func (s *P2PService) relayMessage(msg *Message, sender *Peer) {
-	// 중복 체크 - 이미 본 메시지는 릴레이하지 않음
+	// Duplicate check - do not relay already seen messages
 	msgID := s.generateMessageID(msg)
 	if s.hasSeenMessage(msgID) {
 		return // 이미 처리한 메시지
@@ -662,7 +662,7 @@ func (s *P2PService) relayMessage(msg *Message, sender *Peer) {
 	s.Node.mu.RLock()
 	peers := make([]*Peer, 0, len(s.Node.Peers))
 	for _, peer := range s.Node.Peers {
-		// 발신자와 원본 발신자는 제외
+		// Exclude sender and original sender
 		if peer.State == PeerStateActive && peer.ID != sender.ID && peer.ID != msg.From {
 			peers = append(peers, peer)
 		}
@@ -684,7 +684,7 @@ func (s *P2PService) relayMessage(msg *Message, sender *Peer) {
 	}
 }
 
-// BroadcastBlock 블록 브로드캐스트
+// BroadcastBlock broadcasts block
 func (s *P2PService) BroadcastBlock(block *core.Block) error {
 	blockData, err := utils.SerializeData(block, utils.SerializationFormatGob)
 	if err != nil {
@@ -706,7 +706,7 @@ func (s *P2PService) BroadcastBlock(block *core.Block) error {
 	return nil
 }
 
-// BroadcastTx 트랜잭션 브로드캐스트
+// BroadcastTx broadcasts transaction
 func (s *P2PService) BroadcastTx(tx *core.Transaction) error {
 	txData, err := utils.SerializeData(tx, utils.SerializationFormatGob)
 	if err != nil {
@@ -727,7 +727,7 @@ func (s *P2PService) BroadcastTx(tx *core.Transaction) error {
 	return nil
 }
 
-// RequestBlocks 특정 범위의 블록 요청
+// RequestBlocks requests blocks in specific range
 func (s *P2PService) RequestBlocks(peer *Peer, startHeight, endHeight uint64) error {
 	payload := GetBlocksPayload{
 		StartHeight: startHeight,
@@ -742,7 +742,7 @@ func (s *P2PService) RequestBlocks(peer *Peer, startHeight, endHeight uint64) er
 	return s.Node.sendMessage(peer, msg)
 }
 
-// SyncBlocks 피어와 블록 동기화
+// SyncBlocks syncs blocks with peer
 func (s *P2PService) SyncBlocks() error {
 	if s.Blockchain == nil {
 		logger.Error("[Sync] Blockchain not set")
@@ -755,14 +755,14 @@ func (s *P2PService) SyncBlocks() error {
 		return fmt.Errorf("no peers available")
 	}
 
-	// 가장 높은 블록을 가진 피어 찾기
+	// Find peer with highest block
 	var bestPeer *Peer
 	var bestHeight uint64
 
 	for _, peer := range peers {
 		logger.Debug("[Sync] Peer ", peer.ID, " state=", peer.State, " height=", peer.BestHeight)
 		if peer.State == PeerStateActive && peer.BestHeight >= bestHeight {
-			// 높이가 같거나 높은 피어 선택 (첫 번째 active 피어라도 선택되도록)
+			// Select peer with equal or higher height (select first active peer)
 			if bestPeer == nil || peer.BestHeight > bestHeight {
 				bestHeight = peer.BestHeight
 				bestPeer = peer
@@ -772,13 +772,13 @@ func (s *P2PService) SyncBlocks() error {
 
 	if bestPeer == nil {
 		logger.Debug("[Sync] No active peers with higher blocks")
-		return nil // 에러가 아니라 그냥 동기화할 필요 없음
+		return nil // Not an error, just no need to sync
 	}
 
-	// 현재 높이 확인
+	// Check current height
 	currentHeight, err := s.Blockchain.GetLatestHeight()
 	if err != nil {
-		// 체인이 비어있는 경우 (제네시스 블록도 없음) - height 0부터 요청
+		// Chain is empty (no genesis block) - request from height 0
 		logger.Info("[Sync] Empty chain, requesting from genesis (height 0)")
 		currentHeight = 0
 		if bestHeight == 0 {
@@ -792,53 +792,53 @@ func (s *P2PService) SyncBlocks() error {
 
 	if bestHeight <= currentHeight {
 		logger.Debug("[Sync] Already synced (current=", currentHeight, ", best=", bestHeight, ")")
-		return nil // 이미 동기화됨
+		return nil // Already synced
 	}
 
 	logger.Info("[Sync] Requesting blocks ", currentHeight+1, " to ", bestHeight, " from peer ", bestPeer.ID)
 	return s.RequestBlocks(bestPeer, currentHeight+1, bestHeight)
 }
 
-// AddBootNode 부트노드 추가
+// AddBootNode adds bootnode
 func (s *P2PService) AddBootNode(address string) {
 	s.Node.BootNodes = append(s.Node.BootNodes, address)
 }
 
-// Connect 피어에 연결
+// Connect connects to peer
 func (s *P2PService) Connect(address string) error {
 	return s.Node.Connect(address)
 }
 
-// GetPeerCount 연결된 피어 수
+// GetPeerCount returns connected peer count
 func (s *P2PService) GetPeerCount() int {
 	return s.Node.GetPeerCount()
 }
 
-// GetPeers 피어 목록
+// GetPeers returns peer list
 func (s *P2PService) GetPeers() []*Peer {
 	return s.Node.GetPeers()
 }
 
-// GetNodeID 노드 ID
+// GetNodeID returns node ID
 func (s *P2PService) GetNodeID() string {
 	return s.Node.ID
 }
 
-// IsRunning 실행 중인지 확인
+// IsRunning checks if running
 func (s *P2PService) IsRunning() bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.running
 }
 
-// BlocksPayload 블록 목록 페이로드
+// BlocksPayload block list payload
 type BlocksPayload struct {
-	BlocksData [][]byte `json:"blocksData"` // 직렬화된 블록들
+	BlocksData [][]byte `json:"blocksData"` // Serialized blocks
 }
 
-// BroadcastProposal 블록 제안 브로드캐스트 (컨센서스용)
+// BroadcastProposal broadcasts block proposal (for consensus)
 func (s *P2PService) BroadcastProposal(height uint64, round uint32, blockHash prt.Hash, block *core.Block, proposerID string, signature prt.Signature) error {
-	// 블록 직렬화
+	// Serialize block
 	blockData, err := utils.SerializeData(block, utils.SerializationFormatGob)
 	if err != nil {
 		return fmt.Errorf("failed to serialize block: %w", err)
@@ -863,7 +863,7 @@ func (s *P2PService) BroadcastProposal(height uint64, round uint32, blockHash pr
 	return nil
 }
 
-// BroadcastVote 투표 브로드캐스트 (컨센서스용)
+// BroadcastVote broadcasts vote (for consensus)
 func (s *P2PService) BroadcastVote(height uint64, round uint32, blockHash prt.Hash, voteType uint8, voterID string, signature prt.Signature) error {
 	payload := VotePayload{
 		Height:    height,

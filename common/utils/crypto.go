@@ -7,8 +7,8 @@ import (
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
 
-// 인터페이스를 가져와 해당 내용을 해싱한 후 해시의 16진수 인코딩을 반환
-// JSON 직렬화 사용 - GOB는 네트워크 전송 후 해시가 달라지는 문제 있음
+// Take an interface, hash its content, and return hex encoding of the hash
+// Use JSON serialization - GOB has issues with changing hash after network transmission
 func Hash(i interface{}) prt.Hash {
 	data, err := SerializeData(i, SerializationFormatJSON)
 	if err != nil {

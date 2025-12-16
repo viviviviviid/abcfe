@@ -9,7 +9,7 @@ import (
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
 
-// SignData 데이터에 ECDSA 서명
+// SignData performs ECDSA signature on data
 func SignData(privateKey *ecdsa.PrivateKey, data []byte) (prt.Signature, error) {
 	var sig prt.Signature
 
@@ -30,21 +30,21 @@ func SignData(privateKey *ecdsa.PrivateKey, data []byte) (prt.Signature, error) 
 	return sig, nil
 }
 
-// VerifySignature ECDSA 서명 검증
+// VerifySignature verifies ECDSA signature
 func VerifySignature(publicKey *ecdsa.PublicKey, data []byte, sig prt.Signature) bool {
 	if publicKey == nil {
 		return false
 	}
 
-	// ASN.1 DER 형식에서 실제 서명 길이 파싱
+	// Parse actual signature length from ASN.1 DER format
 	// DER: 30 <len> <r> <s>
 	// 30 = SEQUENCE tag
-	// <len> = 서명 데이터 길이 (r + s 부분)
+	// <len> = signature data length (r + s parts)
 	if len(sig) < 2 || sig[0] != 0x30 {
 		return false
 	}
 
-	// 실제 서명 길이 = 2 (tag + length) + 내용 길이
+	// Actual signature length = 2 (tag + length) + content length
 	sigLen := 2 + int(sig[1])
 	if sigLen > len(sig) {
 		return false
@@ -53,7 +53,7 @@ func VerifySignature(publicKey *ecdsa.PublicKey, data []byte, sig prt.Signature)
 	return ecdsa.VerifyASN1(publicKey, data, sig[:sigLen])
 }
 
-// VerifySignatureWithBytes 바이트 공개키로 서명 검증
+// VerifySignatureWithBytes verifies signature with byte public key
 func VerifySignatureWithBytes(publicKeyBytes []byte, data []byte, sig prt.Signature) (bool, error) {
 	if len(publicKeyBytes) == 0 {
 		return false, fmt.Errorf("public key bytes is empty")
@@ -72,7 +72,7 @@ func VerifySignatureWithBytes(publicKeyBytes []byte, data []byte, sig prt.Signat
 	return VerifySignature(publicKey, data, sig), nil
 }
 
-// PublicKeyToBytes 공개키를 바이트로 변환
+// PublicKeyToBytes converts public key to bytes
 func PublicKeyToBytes(publicKey *ecdsa.PublicKey) ([]byte, error) {
 	if publicKey == nil {
 		return nil, fmt.Errorf("public key is nil")
@@ -80,7 +80,7 @@ func PublicKeyToBytes(publicKey *ecdsa.PublicKey) ([]byte, error) {
 	return x509.MarshalPKIXPublicKey(publicKey)
 }
 
-// BytesToPublicKey 바이트를 공개키로 변환
+// BytesToPublicKey converts bytes to public key
 func BytesToPublicKey(data []byte) (*ecdsa.PublicKey, error) {
 	if len(data) == 0 {
 		return nil, fmt.Errorf("public key bytes is empty")

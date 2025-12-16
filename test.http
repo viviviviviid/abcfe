@@ -20,13 +20,16 @@ GET http://localhost:8000/api/v1/block/hash/9fb357de59ad40056d8136af1e8eef2d38fc
 GET http://localhost:8000/api/v1/blocks?page=1&limit=10
 
 ### 트랜잭션 조회
-GET http://localhost:8000/api/v1/tx/9ccc799f6931ab065ecd9feed0ca75ca09d3196a3001540b90b2846309606344
+GET http://localhost:8000/api/v1/tx/e0056d1401c520149b1d03d77099398a68502fe10a1e87f53884b73128b6a8fb
 
 ### 주소 잔액 조회
-GET http://localhost:8000/api/v1/address/01b2542a9097399d94a1875d125c38bbed39fa12/balance
+GET http://localhost:8000/api/v1/address/0f654aea161eabb4abb0f373f71a26a24361ac06/balance
 
 ### 주소 UTXO 조회
-GET http://localhost:8000/api/v1/address/af6736b1d7b01ac01e06da7f8fc3b83a480d6cdf/utxo
+GET http://localhost:8000/api/v1/address/0f654aea161eabb4abb0f373f71a26a24361ac06/utxo
+
+### 주소 트랜잭션 히스토리 조회 (전체)
+GET http://localhost:8000/api/v1/address/0f654aea161eabb4abb0f373f71a26a24361ac06/txs
 
 ### 멤풀 조회
 GET http://localhost:8000/api/v1/mempool/list

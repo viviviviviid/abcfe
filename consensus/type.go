@@ -4,7 +4,7 @@ import (
 	prt "github.com/abcfe/abcfe-node/protocol"
 )
 
-// ValidatorInfo 검증자 인터페이스
+// ValidatorInfo validator interface
 type ValidatorInfo interface {
 	GetAddress() prt.Address
 	GetPubKey() []byte
@@ -12,7 +12,7 @@ type ValidatorInfo interface {
 	GetActiveStat() bool
 }
 
-// Vote 투표 정보
+// Vote vote information
 type Vote struct {
 	Height     uint64        `json:"height"`
 	Round      uint32        `json:"round"`
@@ -23,24 +23,24 @@ type Vote struct {
 	Timestamp  int64         `json:"timestamp"`
 }
 
-// VoteType 투표 유형
+// VoteType vote type
 type VoteType uint8
 
 const (
-	VoteTypePrevote   VoteType = iota // 사전 투표
-	VoteTypePrecommit                 // 사전 커밋
+	VoteTypePrevote   VoteType = iota // Prevote
+	VoteTypePrecommit                 // Precommit
 )
 
-// VoteSet 투표 집합
+// VoteSet vote set
 type VoteSet struct {
 	Height     uint64
 	Round      uint32
 	Type       VoteType
 	Votes      map[string]*Vote // key: voter address string
-	VotedPower uint64           // 투표한 voting power 합
+	VotedPower uint64           // Sum of voted voting power
 }
 
-// NewVoteSet 새 투표셋 생성
+// NewVoteSet creates a new vote set
 func NewVoteSet(height uint64, round uint32, voteType VoteType) *VoteSet {
 	return &VoteSet{
 		Height:     height,
@@ -51,7 +51,7 @@ func NewVoteSet(height uint64, round uint32, voteType VoteType) *VoteSet {
 	}
 }
 
-// AddVote 투표 추가
+// AddVote adds a vote
 func (vs *VoteSet) AddVote(vote *Vote, votingPower uint64) bool {
 	if vote.Height != vs.Height || vote.Round != vs.Round || vote.Type != vs.Type {
 		return false
@@ -59,7 +59,7 @@ func (vs *VoteSet) AddVote(vote *Vote, votingPower uint64) bool {
 
 	key := string(vote.VoterID[:])
 	if _, exists := vs.Votes[key]; exists {
-		return false // 이미 투표함
+		return false // Already voted
 	}
 
 	vs.Votes[key] = vote
@@ -67,7 +67,7 @@ func (vs *VoteSet) AddVote(vote *Vote, votingPower uint64) bool {
 	return true
 }
 
-// HasTwoThirdsMajority 2/3 이상 동의 여부
+// HasTwoThirdsMajority checks if 2/3 majority reached
 func (vs *VoteSet) HasTwoThirdsMajority(totalPower uint64) bool {
 	return vs.VotedPower*3 > totalPower*2
 }

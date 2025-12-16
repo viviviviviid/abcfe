@@ -16,21 +16,21 @@ func HomeDir() string {
 	return ""
 }
 
-// 프로젝트 루트 디렉토리 찾기
+// FindProjectRoot finds the project root directory
 func FindProjectRoot(startDir string) string {
-	// 현재 디렉토리에서 시작해서 상위로 올라가며 go.mod 파일 찾기
+	// Start from the current directory and move up to find go.mod file
 	dir := startDir
 	for {
-		// go.mod 파일이 있는지 확인
+		// Check if go.mod file exists
 		if _, err := os.Stat(path.Join(dir, "go.mod")); err == nil {
 			return dir
 		}
 
-		// 상위 디렉토리로 이동
+		// Move to parent directory
 		parentDir := path.Dir(dir)
 		if parentDir == dir {
-			// 루트에 도달했으나 go.mod를 찾지 못함
-			// 현재 디렉토리 반환
+			// Reached root but couldn't find go.mod
+			// Return current directory
 			return startDir
 		}
 		dir = parentDir

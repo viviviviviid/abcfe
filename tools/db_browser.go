@@ -31,7 +31,7 @@ func main() {
 		command = os.Args[2]
 	}
 
-	// LevelDB 열기
+	// Open LevelDB
 	db, err := leveldb.OpenFile(dbPath, &opt.Options{})
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)
@@ -74,7 +74,7 @@ func main() {
 func showMetadata(db *leveldb.DB) {
 	fmt.Println("=== METADATA ===")
 
-	// 최신 높이
+	// Latest Height
 	heightBytes, err := db.Get([]byte("meta:height"), nil)
 	if err != nil {
 		fmt.Printf("Latest Height: Not found (%v)\n", err)
@@ -82,7 +82,7 @@ func showMetadata(db *leveldb.DB) {
 		fmt.Printf("Latest Height: %s\n", string(heightBytes))
 	}
 
-	// 최신 블록 해시
+	// Latest Block Hash
 	hashBytes, err := db.Get([]byte("meta:hash"), nil)
 	if err != nil {
 		fmt.Printf("Latest Block Hash: Not found (%v)\n", err)
@@ -122,7 +122,7 @@ func listTransactions(db *leveldb.DB) {
 	for iter.Seek(prefix); iter.Valid() && iter.Key()[0] == prefix[0]; iter.Next() {
 		key := string(iter.Key())
 		if len(key) >= len("tx:") && key[:len("tx:")] == "tx:" && !contains(key, ":") {
-			// tx:로 시작하고 추가 콜론이 없는 경우만 (전체 트랜잭션 데이터)
+			// Only if starts with tx: and has no extra colon (full transaction data)
 			txHash := key[len("tx:"):]
 			fmt.Printf("Transaction: %s\n", txHash)
 			count++
@@ -134,7 +134,7 @@ func listTransactions(db *leveldb.DB) {
 func showBlock(db *leveldb.DB, height uint64) {
 	fmt.Printf("=== BLOCK %d ===\n", height)
 
-	// 높이로 블록 해시 조회
+	// Get block hash by height
 	heightKey := utils.GetBlockHeightKey(height)
 	blockHashBytes, err := db.Get(heightKey, nil)
 	if err != nil {
@@ -145,7 +145,7 @@ func showBlock(db *leveldb.DB, height uint64) {
 	blockHashStr := string(blockHashBytes)
 	fmt.Printf("Block Hash: %s\n", blockHashStr)
 
-	// 블록 해시로 블록 데이터 조회
+	// Get block data by block hash
 	blockHash, err := utils.StringToHash(blockHashStr)
 	if err != nil {
 		fmt.Printf("Invalid block hash: %v\n", err)
@@ -170,14 +170,14 @@ func showBlock(db *leveldb.DB, height uint64) {
 func showTransaction(db *leveldb.DB, txHashStr string) {
 	fmt.Printf("=== TRANSACTION %s ===\n", txHashStr)
 
-	// 트랜잭션 해시 변환
+	// Convert transaction hash
 	txHash, err := utils.StringToHash(txHashStr)
 	if err != nil {
 		fmt.Printf("Invalid transaction hash: %v\n", err)
 		return
 	}
 
-	// 트랜잭션 데이터 조회
+	// Get transaction data
 	txKey := utils.GetTxHashKey(txHash)
 	txData, err := db.Get(txKey, nil)
 	if err != nil {
@@ -191,7 +191,7 @@ func showTransaction(db *leveldb.DB, txHashStr string) {
 		fmt.Println("... (truncated)")
 	}
 
-	// 트랜잭션이 포함된 블록 해시 조회
+	// Get block hash containing transaction
 	txBlockKey := utils.GetTxBlockHashKey(txHash)
 	blockHashBytes, err := db.Get(txBlockKey, nil)
 	if err == nil {
@@ -223,7 +223,7 @@ func showAllData(db *leveldb.DB) {
 		fmt.Println()
 
 		count++
-		if count >= 50 { // 최대 50개만 표시
+		if count >= 50 { // Show max 50 entries
 			fmt.Printf("... (showing first 50 entries)\n")
 			break
 		}

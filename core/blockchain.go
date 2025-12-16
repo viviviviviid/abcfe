@@ -10,7 +10,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-// ProposerValidator 제안자 서명 검증을 위한 인터페이스
+// ProposerValidator interface for proposer signature verification
 type ProposerValidator interface {
 	ValidateProposerSignature(proposer proto.Address, blockHash proto.Hash, signature proto.Signature) bool
 	IsValidProposer(proposer proto.Address, height uint64) bool
@@ -22,9 +22,9 @@ type BlockChain struct {
 	db              *leveldb.DB
 	cfg             *config.Config
 	Mempool         *Mempool
-	mu              sync.RWMutex // 쓰기가 없는 경우, 읽기 고루틴이 여러개 접근 가능
+	mu              sync.RWMutex // If no write, multiple read goroutines can access
 
-	// PoA 검증을 위한 콜백 (consensus 패키지에서 설정)
+	// Callback for PoA verification (set in consensus package)
 	proposerValidator ProposerValidator
 }
 
@@ -39,8 +39,8 @@ func NewChainState(db *leveldb.DB, cfg *config.Config) (*BlockChain, error) {
 		return nil, err
 	}
 	
-	// boot 노드나 블록 생성자인 경우에만 제네시스 블록 생성
-	// sync-only 노드는 P2P를 통해 제네시스 블록을 받음
+	// Only boot node or block producer creates genesis block
+	// sync-only nodes receive genesis block via P2P
 	shouldCreateGenesis := (cfg.Common.Mode == "boot" || cfg.Common.BlockProducer) && 
 	                        (bc.LatestHeight == 0 && bc.LatestBlockHash == "")
 	
@@ -124,7 +124,7 @@ func (p *BlockChain) GetLatestHeight() (uint64, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
-	// 빈 체인인 경우에도 에러 대신 0을 리턴 (sync-only 노드 지원)
+	// Return 0 instead of error even if chain is empty (support sync-only node)
 	return p.LatestHeight, nil
 }
 
@@ -169,32 +169,32 @@ func (p *BlockChain) UpdateChainState(height uint64, blockHash string) error {
 	return p.db.Write(batch, nil)
 }
 
-// SetProposerValidator PoA 검증을 위한 인터페이스 설정
+// SetProposerValidator sets interface for PoA verification
 func (p *BlockChain) SetProposerValidator(validator ProposerValidator) {
 	p.proposerValidator = validator
 }
 
-// GetProposerValidator PoA 검증 인터페이스 반환
+// GetProposerValidator returns PoA verification interface
 func (p *BlockChain) GetProposerValidator() ProposerValidator {
 	return p.proposerValidator
 }
 
-// GetMinFee 최소 수수료 반환
+// GetMinFee returns minimum fee
 func (p *BlockChain) GetMinFee() uint64 {
 	return p.cfg.Fee.MinFee
 }
 
-// GetBlockReward 블록 보상 반환
+// GetBlockReward returns block reward
 func (p *BlockChain) GetBlockReward() uint64 {
 	return p.cfg.Fee.BlockReward
 }
 
-// GetMaxMemoSize 최대 메모 크기 반환
+// GetMaxMemoSize returns maximum memo size
 func (p *BlockChain) GetMaxMemoSize() uint64 {
 	return p.cfg.Transaction.MaxMemoSize
 }
 
-// GetMaxDataSize 최대 데이터 크기 반환
+// GetMaxDataSize returns maximum data size
 func (p *BlockChain) GetMaxDataSize() uint64 {
 	return p.cfg.Transaction.MaxDataSize
 }

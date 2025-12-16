@@ -445,6 +445,7 @@ func ValidateTxInputSignature(tx *Transaction, input *TxInput, utxo *UTXO) error
 	// Verify signature
 	valid := crypto.VerifySignature(publicKey, txHashBytes, input.Signature)
 	if !valid {
+		fmt.Printf("[DEBUG-VAL] Invalid signature for input %s:%d\n", utils.HashToString(input.TxID), input.OutputIndex)
 		return fmt.Errorf("invalid signature")
 	}
 

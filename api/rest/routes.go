@@ -55,6 +55,7 @@ func setupRouter(blockchain *core.BlockChain, walletMgr *wallet.WalletManager, w
 	// UTXO related API
 	apiRouter.HandleFunc("/address/{address}/utxo", GetAddressUtxo(blockchain)).Methods("GET")
 	apiRouter.HandleFunc("/address/{address}/balance", GetBalanceByUtxo(blockchain)).Methods("GET")
+	apiRouter.HandleFunc("/address/{address}/txs", GetAddressTransactions(blockchain)).Methods("GET")
 
 	// Wallet related API
 	apiRouter.HandleFunc("/wallet/accounts", GetWalletAccounts(walletMgr)).Methods("GET")

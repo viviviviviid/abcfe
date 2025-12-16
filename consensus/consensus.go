@@ -16,8 +16,8 @@ import (
 const (
 	MinStakeAmount     = 1000   // Minimum stake amount
 	MaxValidators      = 100    // Maximum validators
-	BlockProduceTimeMs = 15000  // Block production interval (milliseconds)
-	RoundTimeoutMs     = 15000  // Round timeout (milliseconds)
+	BlockProduceTimeMs = 3000   // Block production interval (milliseconds)
+	RoundTimeoutMs     = 20000  // Round timeout (milliseconds)
 )
 
 // ConsensusState consensus state

@@ -13,6 +13,7 @@ import (
 	"github.com/abcfe/abcfe-node/consensus"
 	"github.com/abcfe/abcfe-node/core"
 	"github.com/abcfe/abcfe-node/p2p"
+	prt "github.com/abcfe/abcfe-node/protocol"
 	"github.com/abcfe/abcfe-node/wallet"
 	"github.com/gorilla/mux"
 )
@@ -213,6 +214,32 @@ func GetBalanceByUtxo(bc *core.BlockChain) http.HandlerFunc {
 	}
 }
 
+// get address transactions response
+func GetAddressTransactions(bc *core.BlockChain) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		addrStr := vars["address"]
+
+		address, err := utils.StringToAddress(addrStr)
+		if err != nil {
+			sendResp(w, http.StatusBadRequest, nil, err)
+			return
+		}
+
+		txInfos, err := bc.GetAddressTransactions(address)
+		if err != nil {
+			sendResp(w, http.StatusInternalServerError, nil, err)
+			return
+		}
+
+		response := map[string]interface{}{
+			"address":      addrStr,
+			"transactions": formatAddressTxInfos(txInfos),
+		}
+		sendResp(w, http.StatusOK, response, nil)
+	}
+}
+
 func SubmitTransferTx(bc *core.BlockChain) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req SubmitTxReq
@@ -350,7 +377,7 @@ func formatTxResp(tx *core.Transaction, bc *core.BlockChain) TxResp {
 		Version:   tx.Version,
 		Timestamp: tx.Timestamp,
 		Inputs:    formatTxInputsResp(tx.Inputs),
-		Outputs:   formatTxOutputsResp(tx.Outputs),
+		Outputs:   formatTxOutputsRespWithSpent(tx.ID, tx.Outputs, bc),
 		Memo:      tx.Memo,
 		Fee:       fee,
 	}
@@ -383,6 +410,28 @@ func formatTxOutputsResp(outputs []*core.TxOutput) []interface{} {
 	return result
 }
 
+// get tx output response with spent status
+func formatTxOutputsRespWithSpent(txID prt.Hash, outputs []*core.TxOutput, bc *core.BlockChain) []interface{} {
+	result := make([]interface{}, len(outputs))
+	for i, output := range outputs {
+		// Check if this output is spent by checking UTXO status
+		isSpent := true // Default: assume spent
+		utxo, err := bc.GetUtxoByTxIdAndIdx(txID, uint64(i))
+		if err == nil {
+			// UTXO exists in DB, check if it's actually spendable
+			isSpent = utxo.Spent
+		}
+
+		result[i] = map[string]interface{}{
+			"address": utils.AddressToString(output.Address),
+			"amount":  output.Amount,
+			"txType":  output.TxType,
+			"spent":   isSpent,
+		}
+	}
+	return result
+}
+
 func formatUtxoResp(utxos []*core.UTXO) []interface{} {
 	result := make([]interface{}, len(utxos))
 	for i, utxo := range utxos {
@@ -392,6 +441,22 @@ func formatUtxoResp(utxos []*core.UTXO) []interface{} {
 			"amount":      utxo.TxOut.Amount,
 			"address":     utils.AddressToString(utxo.TxOut.Address),
 			"height":      utxo.Height,
+		}
+	}
+	return result
+}
+
+func formatAddressTxInfos(txInfos []*core.AddressTxInfo) []interface{} {
+	result := make([]interface{}, len(txInfos))
+	for i, info := range txInfos {
+		result[i] = map[string]interface{}{
+			"txId":      utils.HashToString(info.TxID),
+			"type":      info.Type,
+			"amount":    info.Amount,
+			"timestamp": info.Timestamp,
+			"height":    info.Height,
+			"spent":     info.Spent,
+			"index":     info.Index,
 		}
 	}
 	return result
@@ -568,6 +633,25 @@ func CreateNewAccount(wm *wallet.WalletManager) http.HandlerFunc {
 
 // convertSignedTxReqToTx converts request to Transaction
 func convertSignedTxReqToTx(req *SubmitSignedTxReq) (*core.Transaction, error) {
+	// Parse signatures and public keys first (for later use)
+	signatures := make([]prt.Signature, len(req.Inputs))
+	publicKeys := make([][]byte, len(req.Inputs))
+
+	for i, in := range req.Inputs {
+		sig, err := utils.StringToSignature(in.Signature)
+		if err != nil {
+			return nil, fmt.Errorf("invalid signature in input[%d]: %w", i, err)
+		}
+		signatures[i] = sig
+
+		pubKey, err := hex.DecodeString(in.PublicKey)
+		if err != nil {
+			return nil, fmt.Errorf("invalid publicKey in input[%d]: %w", i, err)
+		}
+		publicKeys[i] = pubKey
+	}
+
+	// Create inputs WITHOUT signatures (for correct TX ID calculation)
 	inputs := make([]*core.TxInput, len(req.Inputs))
 	for i, in := range req.Inputs {
 		txID, err := utils.StringToHash(in.TxID)
@@ -575,21 +659,11 @@ func convertSignedTxReqToTx(req *SubmitSignedTxReq) (*core.Transaction, error) {
 			return nil, fmt.Errorf("invalid txId in input[%d]: %w", i, err)
 		}
 
-		sig, err := utils.StringToSignature(in.Signature)
-		if err != nil {
-			return nil, fmt.Errorf("invalid signature in input[%d]: %w", i, err)
-		}
-
-		pubKey, err := hex.DecodeString(in.PublicKey)
-		if err != nil {
-			return nil, fmt.Errorf("invalid publicKey in input[%d]: %w", i, err)
-		}
-
 		inputs[i] = &core.TxInput{
 			TxID:        txID,
 			OutputIndex: in.OutputIndex,
-			Signature:   sig,
-			PublicKey:   pubKey,
+			PublicKey:   publicKeys[i],
+			// Signature is NOT set here - will be added AFTER TX ID calculation
 		}
 	}
 
@@ -616,8 +690,27 @@ func convertSignedTxReqToTx(req *SubmitSignedTxReq) (*core.Transaction, error) {
 		Data:      req.Data,
 	}
 
-	// Calculate TX ID
+	// Normalize for consistent hashing (same as ValidateTxHash)
+	if tx.Data == nil {
+		tx.Data = []byte{}
+	}
+	if tx.Inputs == nil {
+		tx.Inputs = []*core.TxInput{}
+	}
+	if tx.Outputs == nil {
+		tx.Outputs = []*core.TxOutput{}
+	}
+
+	// Calculate TX ID (WITHOUT signatures - same as client did)
 	tx.ID = utils.Hash(tx)
+
+	// NOW add signatures AFTER TX ID is calculated
+	for i := range tx.Inputs {
+		tx.Inputs[i].Signature = signatures[i]
+	}
+
+	fmt.Printf("[DEBUG] Server Recalculated ID: %s\n", utils.HashToString(tx.ID))
+	fmt.Printf("[DEBUG] TX Dump (Server): %+v\n", tx)
 
 	return tx, nil
 }

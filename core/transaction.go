@@ -473,9 +473,14 @@ func (p *BlockChain) ValidateTxSignatures(tx *Transaction) error {
 		// Verify signature
 		valid, err := crypto.VerifySignatureWithBytes(input.PublicKey, txHashBytes, input.Signature)
 		if err != nil {
+			fmt.Printf("[DEBUG] Verify failed with error: %v\n", err)
 			return fmt.Errorf("input[%d]: signature verification error: %w", i, err)
 		}
 		if !valid {
+			fmt.Printf("[DEBUG] Invalid signature for input %d\n", i)
+			fmt.Printf("[DEBUG] Verify Hash: %x\n", txHashBytes)
+			fmt.Printf("[DEBUG] Verify PubKey: %x\n", input.PublicKey)
+			fmt.Printf("[DEBUG] Verify Sig: %x\n", input.Signature)
 			return fmt.Errorf("input[%d]: invalid signature", i)
 		}
 
@@ -503,4 +508,63 @@ func (p *BlockChain) ValidateTxSignatures(tx *Transaction) error {
 	}
 
 	return nil
+}
+
+// AddressTxInfo represents transaction info for a specific address
+type AddressTxInfo struct {
+	TxID      prt.Hash    `json:"txId"`
+	Type      string      `json:"type"`      // Always "received" (outputs only)
+	Amount    uint64      `json:"amount"`    // Amount received
+	Timestamp int64       `json:"timestamp"` // Transaction timestamp
+	Height    uint64      `json:"height"`    // Block height
+	Spent     bool        `json:"spent"`     // Whether the output is spent
+	Index     uint64      `json:"index"`     // Output index
+}
+
+// GetAddressTransactions returns all transactions related to an address
+func (p *BlockChain) GetAddressTransactions(address prt.Address) ([]*AddressTxInfo, error) {
+	p.mu.RLock()
+	latestHeight := p.LatestHeight
+	p.mu.RUnlock()
+
+	var txInfos []*AddressTxInfo
+
+	// Iterate through all blocks
+	for height := uint64(0); height <= latestHeight; height++ {
+		block, err := p.GetBlockByHeight(height)
+		if err != nil {
+			continue
+		}
+
+		// Check each transaction in the block
+		for _, tx := range block.Transactions {
+			// Check outputs (received transactions)
+			for idx, output := range tx.Outputs {
+				if output.Address == address {
+					// Check if this output is spent by checking UTXO status
+					isSpent := true // Default: assume spent
+					utxo, err := p.GetUtxoByTxIdAndIdx(tx.ID, uint64(idx))
+					if err == nil {
+						// UTXO exists in DB, check if it's actually spendable
+						isSpent = utxo.Spent
+					}
+
+					txInfos = append(txInfos, &AddressTxInfo{
+						TxID:      tx.ID,
+						Type:      "received",
+						Amount:    output.Amount,
+						Timestamp: tx.Timestamp,
+						Height:    height,
+						Spent:     isSpent,
+						Index:     uint64(idx),
+					})
+				}
+			}
+
+			// Note: Inputs (sent transactions) are not included to avoid duplication
+			// The spending of a UTXO is reflected in the "spent" field of the received transaction
+		}
+	}
+
+	return txInfos, nil
 }

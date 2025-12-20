@@ -8,16 +8,18 @@ import (
 	"github.com/abcfe/abcfe-node/common/logger"
 	"github.com/abcfe/abcfe-node/common/utils"
 	conf "github.com/abcfe/abcfe-node/config"
+	"github.com/abcfe/abcfe-node/core"
 	prt "github.com/abcfe/abcfe-node/protocol"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Consensus constants
 const (
-	MinStakeAmount     = 1000   // Minimum stake amount
-	MaxValidators      = 100    // Maximum validators
-	BlockProduceTimeMs = 3000   // Block production interval (milliseconds)
-	RoundTimeoutMs     = 20000  // Round timeout (milliseconds)
+	MinStakeAmount     = 1000  // Minimum stake amount
+	MaxValidators      = 100   // Maximum validators
+	BlockProduceTimeMs = 1000  // Block production check interval (milliseconds)
+	BlockIntervalMs    = 5000  // Minimum interval between blocks (milliseconds)
+	RoundTimeoutMs     = 20000 // Round timeout (milliseconds)
 )
 
 // ConsensusState consensus state
@@ -39,7 +41,7 @@ type Consensus struct {
 	DB   *leveldb.DB
 
 	// Consensus state
-	State        ConsensusState
+	State         ConsensusState
 	CurrentHeight uint64
 	CurrentRound  uint32
 
@@ -303,4 +305,48 @@ func (c *Consensus) IsValidProposer(proposer prt.Address, height uint64) bool {
 	// BFT mode: Valid if in validator list
 	// (Proposer for specific round is already verified in HandleProposal)
 	return true
+}
+
+// ValidateCommitSignatures validates BFT commit signatures (2/3+ majority)
+func (c *Consensus) ValidateCommitSignatures(blockHash prt.Hash, commitSigs []core.CommitSignature) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// If no validators in the set (e.g. solo mode), skip validation
+	if len(c.ValidatorSet.Validators) == 0 {
+		return nil
+	}
+
+	totalPower := c.ValidatorSet.TotalVotingPower
+	var votedPower uint64
+	seenValidators := make(map[string]bool)
+
+	for _, sig := range commitSigs {
+		addrStr := utils.AddressToString(sig.ValidatorAddress)
+		if seenValidators[addrStr] {
+			continue // Prevent double voting in evidence
+		}
+
+		validator, exists := c.ValidatorSet.Validators[addrStr]
+		if !exists || !validator.IsActive {
+			continue // Not an active validator in our set
+		}
+
+		// Verify signature
+		if !validator.ValidateBlockSignature(blockHash, sig.Signature) {
+			return fmt.Errorf("invalid commit signature from validator %s", addrStr)
+		}
+
+		votedPower += validator.VotingPower
+		seenValidators[addrStr] = true
+	}
+
+	// 2/3 majority requirement: votedPower > totalPower * 2 / 3
+	// Use integer arithmetic: votedPower * 3 > totalPower * 2
+	if votedPower*3 <= totalPower*2 {
+		return fmt.Errorf("insufficient commit signatures: %d power from %d signatures / total power %d (need > 2/3)",
+			votedPower, len(seenValidators), totalPower)
+	}
+
+	return nil
 }

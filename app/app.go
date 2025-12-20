@@ -200,7 +200,7 @@ func New(configPath string) (*App, error) {
 		// Special handling if empty chain (currentHeight == 0) and received genesis block (height == 0)
 		if currentHeight == 0 && block.Header.Height == 0 {
 			logger.Info("[BlockHandler] Received genesis block from peer, importing...")
-			if err := app.BlockChain.ValidateBlock(*block); err != nil {
+			if err := app.BlockChain.ValidateBlock(*block, true); err != nil {
 				logger.Error("[BlockHandler] Invalid genesis block: ", err)
 				return
 			}
@@ -239,7 +239,7 @@ func New(configPath string) (*App, error) {
 
 		// Validate and add block
 		logger.Debug("[BlockHandler] Validating block height=", block.Header.Height)
-		if err := app.BlockChain.ValidateBlock(*block); err != nil {
+		if err := app.BlockChain.ValidateBlock(*block, true); err != nil {
 			logger.Error("[BlockHandler] Invalid received block height=", block.Header.Height, ": ", err)
 			return
 		}
@@ -278,7 +278,7 @@ func New(configPath string) (*App, error) {
 				break
 			}
 
-			if err := app.BlockChain.ValidateBlock(*nextBlock); err != nil {
+			if err := app.BlockChain.ValidateBlock(*nextBlock, true); err != nil {
 				logger.Error("[BlockHandler] Invalid pending block: ", err)
 				break
 			}

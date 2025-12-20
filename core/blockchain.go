@@ -14,6 +14,7 @@ import (
 type ProposerValidator interface {
 	ValidateProposerSignature(proposer proto.Address, blockHash proto.Hash, signature proto.Signature) bool
 	IsValidProposer(proposer proto.Address, height uint64) bool
+	ValidateCommitSignatures(blockHash proto.Hash, commitSigs []CommitSignature) error
 }
 
 type BlockChain struct {
@@ -38,12 +39,12 @@ func NewChainState(db *leveldb.DB, cfg *config.Config) (*BlockChain, error) {
 	if err := bc.LoadChainDB(); err != nil {
 		return nil, err
 	}
-	
+
 	// Only boot node or block producer creates genesis block
 	// sync-only nodes receive genesis block via P2P
-	shouldCreateGenesis := (cfg.Common.Mode == "boot" || cfg.Common.BlockProducer) && 
-	                        (bc.LatestHeight == 0 && bc.LatestBlockHash == "")
-	
+	shouldCreateGenesis := (cfg.Common.Mode == "boot" || cfg.Common.BlockProducer) &&
+		(bc.LatestHeight == 0 && bc.LatestBlockHash == "")
+
 	if shouldCreateGenesis {
 		genesisBlk, err := bc.SetGenesisBlock()
 		if err != nil {

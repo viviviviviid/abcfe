@@ -119,6 +119,7 @@ func (p *BlockChain) createCoinbaseTx(proposer prt.Address, height uint64, total
 
 	coinbaseTx := &Transaction{
 		Version:   p.cfg.Version.Transaction,
+		NetworkID: p.cfg.Common.NetworkID,
 		Timestamp: blockTimestamp, // Use block timestamp (same value across all nodes)
 		Inputs:    []*TxInput{},   // Coinbase TX has no Inputs
 		Outputs: []*TxOutput{

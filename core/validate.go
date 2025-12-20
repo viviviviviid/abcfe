@@ -147,7 +147,7 @@ func ValidateProposerSignature(block *Block, validator ProposerValidator) error 
 }
 
 // ValidateBlock validates the entire block (BlockChain method)
-func (p *BlockChain) ValidateBlock(block Block) error {
+func (p *BlockChain) ValidateBlock(block Block, checkCommit bool) error {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -195,6 +195,13 @@ func (p *BlockChain) ValidateBlock(block Block) error {
 	// 7. Validate proposer signature (PoA)
 	if err := ValidateProposerSignature(&block, p.proposerValidator); err != nil {
 		return err
+	}
+
+	// 8. Validate BFT commit signatures (2/3+ majority) - conditionally
+	if checkCommit && p.proposerValidator != nil {
+		if err := p.proposerValidator.ValidateCommitSignatures(block.Header.Hash, block.CommitSignatures); err != nil {
+			return fmt.Errorf("BFT consensus validation failed: %w", err)
+		}
 	}
 
 	// 8. Validate transaction count
@@ -253,6 +260,11 @@ func (p *BlockChain) ValidateTransaction(tx *Transaction) error {
 	// Validate transaction hash
 	if err := ValidateTxHash(tx); err != nil {
 		return err
+	}
+
+	// Validate NetworkID (prevent replay)
+	if tx.NetworkID != p.cfg.Common.NetworkID {
+		return fmt.Errorf("network ID mismatch: tx=%s, node=%s", tx.NetworkID, p.cfg.Common.NetworkID)
 	}
 
 	// Validate memo size

@@ -54,6 +54,9 @@ type ConsensusEngine struct {
 	roundTimer          *time.Timer
 	roundTimerMu        sync.Mutex
 	consecutiveTimeouts int // Consecutive timeout counter
+
+	// Block interval control
+	lastBlockTime int64 // Last block commit timestamp (Unix milliseconds)
 }
 
 // NewConsensusEngine creates a new consensus engine
@@ -141,6 +144,16 @@ func (e *ConsensusEngine) runRound() {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	// Check minimum block interval
+	now := time.Now().UnixMilli()
+	if e.lastBlockTime > 0 {
+		elapsed := now - e.lastBlockTime
+		if elapsed < BlockIntervalMs {
+			// Not enough time has passed since last block
+			return
+		}
+	}
+
 	// Create block in solo mode if no validators
 	validators := e.consensus.ValidatorSet.GetActiveValidators()
 
@@ -167,7 +180,7 @@ func (e *ConsensusEngine) runRound() {
 	}
 
 	// Check proposer for next block (blockchain height + 1)
-	proposer := e.consensus.Selector.SelectProposer(nextBlockHeight, 0)
+	proposer := e.consensus.Selector.SelectProposer(nextBlockHeight, e.consensus.CurrentRound)
 	if proposer == nil {
 		logger.Warn("[Consensus] No proposer selected")
 		return
@@ -394,7 +407,7 @@ func (e *ConsensusEngine) HandleProposal(height uint64, round uint32, blockHash 
 	}
 
 	// Validate block (including signature)
-	if err := e.blockchain.ValidateBlock(*block); err != nil {
+	if err := e.blockchain.ValidateBlock(*block, false); err != nil {
 		logger.Error("[Consensus] Invalid proposed block: ", err)
 		return
 	}
@@ -561,6 +574,9 @@ func (e *ConsensusEngine) commitBlock(block *core.Block) {
 
 	logger.Info("[Consensus] Block ", block.Header.Height, " committed (hash: ", utils.HashToString(block.Header.Hash)[:16], ", txs: ", len(block.Transactions), ")")
 
+	// Update last block time for interval control
+	e.lastBlockTime = time.Now().UnixMilli()
+
 	// Call callback (P2P broadcast)
 	if e.onBlockCommit != nil {
 		e.onBlockCommit(block)
@@ -608,6 +624,9 @@ func (e *ConsensusEngine) commitBlockWithSignatures(block *core.Block) {
 	}
 
 	logger.Info("[Consensus] Block ", block.Header.Height, " committed with BFT consensus (hash: ", utils.HashToString(block.Header.Hash)[:16], ", txs: ", len(block.Transactions), ", validators: ", len(block.CommitSignatures), ")")
+
+	// Update last block time for interval control
+	e.lastBlockTime = time.Now().UnixMilli()
 
 	// Call callback (P2P broadcast)
 	if e.onBlockCommit != nil {

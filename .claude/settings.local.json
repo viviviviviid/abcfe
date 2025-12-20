@@ -38,7 +38,11 @@
       "Bash(go run:*)",
       "Bash(jq:*)",
       "Bash(./stop_all_nodes.sh:*)",
-      "Bash(bash:*)"
+      "Bash(bash:*)",
+      "Bash(__NEW_LINE__ echo \"\")",
+      "Bash(# Clean everything and rebuild ./clean_all.sh || true pkill -9 abcfed || true sleep 2 # Rebuild make build 2>&1)",
+      "Bash(./run_api_test.sh:*)",
+      "Bash(./resume_poa.sh:*)"
     ],
     "deny": [],
     "ask": []

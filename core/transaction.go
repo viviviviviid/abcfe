@@ -14,6 +14,7 @@ import (
 // Transaction struct
 type Transaction struct {
 	Version   string   `json:"version"`   // Transaction version
+	NetworkID string   `json:"networkId"` // Network identifier (to prevent replay)
 	ID        prt.Hash `json:"id"`        // Transaction ID (hash)
 	Timestamp int64    `json:"timestamp"` // Transaction creation time
 
@@ -22,8 +23,6 @@ type Transaction struct {
 
 	Memo string `json:"memo"` // Transaction memo (replaces inputData)
 	Data []byte `json:"data"` // Arbitrary data (smart contract calls, etc.)
-	// Status // TODO
-	// Signature // TODO
 }
 
 type TxInput struct {
@@ -76,6 +75,7 @@ func (p *BlockChain) SetTransferTx(from prt.Address, to prt.Address, amount uint
 
 	tx := Transaction{
 		Version:   p.cfg.Version.Transaction,
+		NetworkID: p.cfg.Common.NetworkID,
 		Timestamp: time.Now().Unix(),
 		Inputs:    normalizedInputs,
 		Outputs:   txInAndOut.TxOuts,
@@ -421,6 +421,7 @@ func (p *BlockChain) CreateSignedTx(from, to prt.Address, amount uint64, fee uin
 	// Create transaction
 	tx := &Transaction{
 		Version:   p.cfg.Version.Transaction,
+		NetworkID: p.cfg.Common.NetworkID,
 		Timestamp: time.Now().Unix(),
 		Inputs:    normalizedInputs,
 		Outputs:   txOuts,
@@ -512,13 +513,13 @@ func (p *BlockChain) ValidateTxSignatures(tx *Transaction) error {
 
 // AddressTxInfo represents transaction info for a specific address
 type AddressTxInfo struct {
-	TxID      prt.Hash    `json:"txId"`
-	Type      string      `json:"type"`      // Always "received" (outputs only)
-	Amount    uint64      `json:"amount"`    // Amount received
-	Timestamp int64       `json:"timestamp"` // Transaction timestamp
-	Height    uint64      `json:"height"`    // Block height
-	Spent     bool        `json:"spent"`     // Whether the output is spent
-	Index     uint64      `json:"index"`     // Output index
+	TxID      prt.Hash `json:"txId"`
+	Type      string   `json:"type"`      // Always "received" (outputs only)
+	Amount    uint64   `json:"amount"`    // Amount received
+	Timestamp int64    `json:"timestamp"` // Transaction timestamp
+	Height    uint64   `json:"height"`    // Block height
+	Spent     bool     `json:"spent"`     // Whether the output is spent
+	Index     uint64   `json:"index"`     // Output index
 }
 
 // GetAddressTransactions returns all transactions related to an address

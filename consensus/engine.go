@@ -265,6 +265,9 @@ func (e *ConsensusEngine) produceBlockSolo() {
 
 	logger.Info("[Consensus] Block ", newBlock.Header.Height, " created (hash: ", utils.HashToString(newBlock.Header.Hash)[:16], ", txs: ", len(newBlock.Transactions), ")")
 
+	// Update last block time for interval control
+	e.lastBlockTime = time.Now().UnixMilli()
+
 	// Call callback
 	if e.onBlockCommit != nil {
 		e.onBlockCommit(newBlock)
@@ -458,13 +461,18 @@ func (e *ConsensusEngine) HandleVote(vote *Vote) {
 		return
 	}
 
+	// Verify vote signature
+	if !validator.ValidateBlockSignature(vote.BlockHash, vote.Signature) {
+		logger.Warn("[Consensus] Invalid vote signature from: ", utils.AddressToString(vote.VoterID)[:16])
+		return
+	}
+
 	totalPower := e.consensus.ValidatorSet.TotalVotingPower
 	voterAddr := utils.AddressToString(vote.VoterID)[:16]
 
 	switch vote.Type {
 	case VoteTypePrevote:
 		if e.prevotes != nil {
-			e.prevotes.AddVote(vote, validator.VotingPower)
 			added := e.prevotes.AddVote(vote, validator.VotingPower)
 			if added {
 				logger.Debug("[Consensus] Prevote received from ", voterAddr, " (", e.prevotes.VotedPower, "/", totalPower, " = ", len(e.prevotes.Votes), " votes)")
@@ -479,7 +487,6 @@ func (e *ConsensusEngine) HandleVote(vote *Vote) {
 
 	case VoteTypePrecommit:
 		if e.precommits != nil {
-			e.precommits.AddVote(vote, validator.VotingPower)
 			added := e.precommits.AddVote(vote, validator.VotingPower)
 			if added {
 				logger.Debug("[Consensus] Precommit received from ", voterAddr, " (", e.precommits.VotedPower, "/", totalPower, " = ", len(e.precommits.Votes), " votes)")
@@ -613,6 +620,13 @@ func (e *ConsensusEngine) commitBlockWithSignatures(block *core.Block) {
 		}
 		block.CommitSignatures = commitSigs
 		logger.Info("[Consensus] Block ", block.Header.Height, " has ", len(commitSigs), " commit signatures")
+	}
+
+	// Final BFT validation before commit
+	if err := e.blockchain.ValidateBlock(*block, true); err != nil {
+		logger.Error("[Consensus] Final block validation failed: ", err)
+		e.consensus.IncrementRound()
+		return
 	}
 
 	// Add block

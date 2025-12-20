@@ -204,22 +204,22 @@ func (p *BlockChain) ValidateBlock(block Block, checkCommit bool) error {
 		}
 	}
 
-	// 8. Validate transaction count
+	// 9. Validate transaction count
 	if err := ValidateTxCount(block.Transactions); err != nil {
 		return err
 	}
 
-	// 9. Validate duplicate transactions
+	// 10. Validate duplicate transactions
 	if err := ValidateDuplicateTx(block.Transactions); err != nil {
 		return err
 	}
 
-	// 10. Validate duplicate UTXO usage
+	// 11. Validate duplicate UTXO usage
 	if err := ValidateDuplicateUTXO(block.Transactions); err != nil {
 		return err
 	}
 
-	// 11. Validate each transaction
+	// 12. Validate each transaction
 	for _, tx := range block.Transactions {
 		if err := p.ValidateTransaction(tx); err != nil {
 			return fmt.Errorf("invalid transaction %s: %w", utils.HashToString(tx.ID), err)

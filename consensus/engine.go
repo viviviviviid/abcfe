@@ -171,6 +171,15 @@ func (e *ConsensusEngine) runRound() {
 	}
 	nextBlockHeight := currentHeight + 1
 
+	// Get previous block hash for VRF-based selection
+	var prevBlockHash prt.Hash
+	if currentHeight > 0 {
+		prevBlock, err := e.blockchain.GetBlockByHeight(currentHeight)
+		if err == nil {
+			prevBlockHash = prevBlock.Header.Hash
+		}
+	}
+
 	// Sync consensus height (based on blockchain height)
 	if e.consensus.CurrentHeight != nextBlockHeight {
 		e.consensus.mu.Lock()
@@ -179,8 +188,8 @@ func (e *ConsensusEngine) runRound() {
 		e.consensus.mu.Unlock()
 	}
 
-	// Check proposer for next block (blockchain height + 1)
-	proposer := e.consensus.Selector.SelectProposer(nextBlockHeight, e.consensus.CurrentRound)
+	// Check proposer for next block (using configured selection mode)
+	proposer := e.consensus.SelectProposerByMode(nextBlockHeight, e.consensus.CurrentRound, prevBlockHash)
 	if proposer == nil {
 		logger.Warn("[Consensus] No proposer selected")
 		return
@@ -389,8 +398,17 @@ func (e *ConsensusEngine) HandleProposal(height uint64, round uint32, blockHash 
 		return
 	}
 
+	// Get previous block hash for VRF-based selection
+	var prevBlockHash prt.Hash
+	if currentHeight > 0 {
+		prevBlock, err := e.blockchain.GetBlockByHeight(currentHeight)
+		if err == nil {
+			prevBlockHash = prevBlock.Header.Hash
+		}
+	}
+
 	// First check if proposer for this round is valid (before round sync)
-	expectedProposer := e.consensus.Selector.SelectProposer(height, round)
+	expectedProposer := e.consensus.SelectProposerByMode(height, round, prevBlockHash)
 	if expectedProposer == nil {
 		logger.Error("[Consensus] No expected proposer for height ", height, " round ", round)
 		return
@@ -739,9 +757,19 @@ func (e *ConsensusEngine) handleRoundTimeout(height uint64, round uint32) {
 	e.prevotes = nil
 	e.precommits = nil
 
+	// Get previous block hash for VRF-based selection
+	var prevBlockHash prt.Hash
+	latestHeight, _ := e.blockchain.GetLatestHeight()
+	if latestHeight > 0 {
+		prevBlock, err := e.blockchain.GetBlockByHeight(latestHeight)
+		if err == nil {
+			prevBlockHash = prevBlock.Header.Hash
+		}
+	}
+
 	// Check if next round proposer is local node
 	nextRound := e.consensus.CurrentRound
-	proposer := e.consensus.Selector.SelectProposer(height, nextRound)
+	proposer := e.consensus.SelectProposerByMode(height, nextRound, prevBlockHash)
 	if proposer != nil && e.consensus.LocalValidator != nil {
 		if proposer.Address == e.consensus.LocalValidator.Address {
 			logger.Info("[Consensus] Local node is proposer for round ", nextRound, ", proposing block")

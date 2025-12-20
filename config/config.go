@@ -80,6 +80,15 @@ type Transaction struct {
 	MaxDataSize uint64 `toml:"maxDataSize"` // Max data size (bytes)
 }
 
+// Consensus config
+type Consensus struct {
+	// Proposer selection mode: "roundrobin", "vrf", "hybrid"
+	// - roundrobin: Simple round-robin (predictable, default)
+	// - vrf: VRF-like hash-based selection (unpredictable)
+	// - hybrid: VRF for round 0, round-robin for timeouts
+	ProposerSelection string `toml:"proposerSelection"`
+}
+
 type Config struct {
 	Common      Common
 	LogInfo     LogInfo
@@ -92,6 +101,7 @@ type Config struct {
 	P2P         P2P
 	Fee         Fee         // Fee config
 	Transaction Transaction // Transaction limit config
+	Consensus   Consensus   // Consensus config
 }
 
 func NewConfig(filepath string) (*Config, error) {

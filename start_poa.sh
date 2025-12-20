@@ -248,6 +248,9 @@ blockReward = 50
 [transaction]
 maxMemoSize = 256
 maxDataSize = 1024
+
+[consensus]
+proposerSelection = "hybrid"
 ${VALIDATORS_TOML}
 EOF
 echo "  ✓ config/config_poa_node1.toml (Boot)"
@@ -305,6 +308,9 @@ blockReward = 50
 [transaction]
 maxMemoSize = 256
 maxDataSize = 1024
+
+[consensus]
+proposerSelection = "hybrid"
 ${VALIDATORS_TOML}
 EOF
     echo "  ✓ config/config_poa_node${i}.toml (Validator)"
@@ -369,6 +375,9 @@ blockReward = 50
 [transaction]
 maxMemoSize = 256
 maxDataSize = 1024
+
+[consensus]
+proposerSelection = "hybrid"
 ${VALIDATORS_TOML}
 EOFGEN
 

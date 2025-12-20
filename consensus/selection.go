@@ -87,3 +87,81 @@ func (ps *ProposerSelector) GetNextProposers(startHeight uint64, count int) []*V
 	}
 	return proposers
 }
+
+// SelectProposerVRF selects proposer using VRF-like hash function
+// Uses prevBlockHash as randomness source for unpredictable selection
+// Combines hash-based randomness with round-robin fallback for timeout scenarios
+func (ps *ProposerSelector) SelectProposerVRF(height uint64, round uint32, prevBlockHash prt.Hash) *Validator {
+	validators := ps.ValidatorSet.GetActiveValidators()
+	if len(validators) == 0 {
+		return nil
+	}
+
+	// Sort validators for deterministic order
+	sort.Slice(validators, func(i, j int) bool {
+		return utils.AddressToString(validators[i].Address) < utils.AddressToString(validators[j].Address)
+	})
+
+	// Generate VRF-like seed: prevBlockHash + height + round
+	// This makes proposer unpredictable until previous block is known
+	seed := make([]byte, 32+8+4)
+	copy(seed[:32], prevBlockHash[:])
+	binary.BigEndian.PutUint64(seed[32:40], height)
+	binary.BigEndian.PutUint32(seed[40:44], round)
+	hash := sha256.Sum256(seed)
+
+	// If total voting power is 0, use simple index selection
+	totalPower := ps.ValidatorSet.TotalVotingPower
+	if totalPower == 0 {
+		index := binary.BigEndian.Uint64(hash[:8]) % uint64(len(validators))
+		return validators[index]
+	}
+
+	// Select by weighted random using hash
+	hashNum := binary.BigEndian.Uint64(hash[:8])
+	target := hashNum % totalPower
+
+	// Select validator by cumulative voting power
+	var cumulative uint64
+	for _, v := range validators {
+		cumulative += v.VotingPower
+		if target < cumulative {
+			return v
+		}
+	}
+
+	// Fallback to first validator
+	return validators[0]
+}
+
+// SelectProposerHybrid combines VRF randomness with round-robin for robustness
+// - Round 0: Uses VRF-based selection (unpredictable)
+// - Round 1+: Falls back to deterministic round-robin (ensures liveness)
+func (ps *ProposerSelector) SelectProposerHybrid(height uint64, round uint32, prevBlockHash prt.Hash) *Validator {
+	validators := ps.ValidatorSet.GetActiveValidators()
+	if len(validators) == 0 {
+		return nil
+	}
+
+	// Sort validators for deterministic order
+	sort.Slice(validators, func(i, j int) bool {
+		return utils.AddressToString(validators[i].Address) < utils.AddressToString(validators[j].Address)
+	})
+
+	// Round 0: VRF-based selection (unpredictable until prev block known)
+	if round == 0 {
+		return ps.SelectProposerVRF(height, round, prevBlockHash)
+	}
+
+	// Round 1+: Deterministic round-robin from VRF base
+	// Calculate base index from VRF, then add round offset
+	seed := make([]byte, 32+8)
+	copy(seed[:32], prevBlockHash[:])
+	binary.BigEndian.PutUint64(seed[32:40], height)
+	hash := sha256.Sum256(seed)
+
+	baseIndex := binary.BigEndian.Uint64(hash[:8]) % uint64(len(validators))
+	finalIndex := (baseIndex + uint64(round)) % uint64(len(validators))
+
+	return validators[finalIndex]
+}

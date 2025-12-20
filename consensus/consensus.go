@@ -53,6 +53,9 @@ type Consensus struct {
 	// If current node is validator
 	LocalValidator *Validator
 	LocalProposer  *Proposer
+
+	// Proposer selection mode: "roundrobin", "vrf", "hybrid"
+	ProposerSelectionMode string
 }
 
 // NewConsensus creates new consensus engine
@@ -83,16 +86,24 @@ func NewConsensus(cfg *conf.Config, db *leveldb.DB) (*Consensus, error) {
 
 	selector := NewProposerSelector(validatorSet)
 
+	// Get proposer selection mode from config (default: roundrobin)
+	proposerMode := cfg.Consensus.ProposerSelection
+	if proposerMode == "" {
+		proposerMode = "roundrobin"
+	}
+	logger.Info("[Consensus] Proposer selection mode: ", proposerMode)
+
 	consensus := &Consensus{
-		stop:          make(chan struct{}),
-		Conf:          *cfg,
-		DB:            db,
-		State:         StateIdle,
-		CurrentHeight: 0,
-		CurrentRound:  0,
-		StakerSet:     stakerSet,
-		ValidatorSet:  validatorSet,
-		Selector:      selector,
+		stop:                  make(chan struct{}),
+		Conf:                  *cfg,
+		DB:                    db,
+		State:                 StateIdle,
+		CurrentHeight:         0,
+		CurrentRound:          0,
+		StakerSet:             stakerSet,
+		ValidatorSet:          validatorSet,
+		Selector:              selector,
+		ProposerSelectionMode: proposerMode,
 	}
 
 	return consensus, nil
@@ -217,6 +228,22 @@ func (c *Consensus) GetCurrentProposer() *Validator {
 	defer c.mu.RUnlock()
 
 	return c.Selector.SelectProposer(c.CurrentHeight, c.CurrentRound)
+}
+
+// SelectProposerByMode selects proposer based on configured mode
+// Modes: "roundrobin", "vrf", "hybrid"
+func (c *Consensus) SelectProposerByMode(height uint64, round uint32, prevBlockHash prt.Hash) *Validator {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	switch c.ProposerSelectionMode {
+	case "vrf":
+		return c.Selector.SelectProposerVRF(height, round, prevBlockHash)
+	case "hybrid":
+		return c.Selector.SelectProposerHybrid(height, round, prevBlockHash)
+	default: // "roundrobin" or empty
+		return c.Selector.SelectProposer(height, round)
+	}
 }
 
 // IsLocalProposer checks if local node is current proposer

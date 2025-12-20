@@ -40,6 +40,9 @@ type P2PService struct {
 	connectingPeers   map[string]time.Time
 	connectingPeersMu sync.Mutex
 
+	// Rate limiting for DoS protection
+	rateLimiter *RateLimiter
+
 	running bool
 }
 
@@ -57,6 +60,7 @@ func NewP2PService(address string, port int, networkID string, blockchain *core.
 		seenProposals:   make(map[string]time.Time),
 		seenVotes:       make(map[string]time.Time),
 		connectingPeers: make(map[string]time.Time),
+		rateLimiter:     NewRateLimiter(nil), // Use default config
 		running:         false,
 	}
 
@@ -131,6 +135,11 @@ func (s *P2PService) Stop() error {
 		return fmt.Errorf("failed to stop node: %w", err)
 	}
 
+	// Stop rate limiter
+	if s.rateLimiter != nil {
+		s.rateLimiter.Stop()
+	}
+
 	s.running = false
 	return nil
 }
@@ -165,6 +174,15 @@ func (s *P2PService) SetVoteHandler(handler func(height uint64, round uint32, vo
 
 // handleMessage processes received message
 func (s *P2PService) handleMessage(msg *Message, peer *Peer) {
+	// Rate limiting check
+	if s.rateLimiter != nil {
+		allowed, reason := s.rateLimiter.AllowMessage(peer.ID, msg.Type)
+		if !allowed {
+			logger.Warn("[P2P] Rate limit exceeded for peer ", peer.Address, ": ", reason)
+			return
+		}
+	}
+
 	switch msg.Type {
 	case MsgTypePing:
 		s.handlePing(peer)

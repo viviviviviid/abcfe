@@ -23,9 +23,9 @@ var upgrader = websocket.Upgrader{
 type WSEventType string
 
 const (
-	EventNewBlock          WSEventType = "new_block"
-	EventNewTransaction    WSEventType = "new_transaction"
-	EventBlockConfirmed    WSEventType = "block_confirmed"
+	EventNewBlock             WSEventType = "new_block"
+	EventNewTransaction       WSEventType = "new_transaction"
+	EventBlockConfirmed       WSEventType = "block_confirmed"
 	EventConsensusStateChange WSEventType = "consensus_state_change"
 )
 
@@ -35,13 +35,21 @@ type WSMessage struct {
 	Data  interface{} `json:"data"`
 }
 
+// ConsensusStateProvider provides current consensus state
+type ConsensusStateProvider func() (state string, height uint64, round uint32, proposerAddr string)
+
+// LatestBlockProvider provides current latest block
+type LatestBlockProvider func() *core.Block
+
 // WSHub client connection management
 type WSHub struct {
-	clients    map[*WSClient]bool
-	broadcast  chan WSMessage
-	register   chan *WSClient
-	unregister chan *WSClient
-	mu         sync.RWMutex
+	clients                map[*WSClient]bool
+	broadcast              chan WSMessage
+	register               chan *WSClient
+	unregister             chan *WSClient
+	mu                     sync.RWMutex
+	consensusStateProvider ConsensusStateProvider
+	latestBlockProvider    LatestBlockProvider
 }
 
 // WSClient WebSocket client
@@ -59,6 +67,74 @@ func NewWSHub() *WSHub {
 		register:   make(chan *WSClient),
 		unregister: make(chan *WSClient),
 	}
+}
+
+// SetConsensusStateProvider sets the consensus state provider callback
+func (h *WSHub) SetConsensusStateProvider(provider ConsensusStateProvider) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.consensusStateProvider = provider
+}
+
+// SetLatestBlockProvider sets the latest block provider callback
+func (h *WSHub) SetLatestBlockProvider(provider LatestBlockProvider) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.latestBlockProvider = provider
+}
+
+// getCurrentConsensusState gets current consensus state message
+func (h *WSHub) getCurrentConsensusState() []byte {
+	h.mu.RLock()
+	provider := h.consensusStateProvider
+	h.mu.RUnlock()
+
+	if provider == nil {
+		return nil
+	}
+
+	state, height, round, proposerAddr := provider()
+
+	msg := WSMessage{
+		Event: EventConsensusStateChange,
+		Data: map[string]interface{}{
+			"state":        state,
+			"height":       height,
+			"round":        round,
+			"proposerAddr": proposerAddr,
+		},
+	}
+	data, _ := json.Marshal(msg)
+	return data
+}
+
+// getLatestBlockMessage gets latest block message
+func (h *WSHub) getLatestBlockMessage() []byte {
+	h.mu.RLock()
+	provider := h.latestBlockProvider
+	h.mu.RUnlock()
+
+	if provider == nil {
+		return nil
+	}
+
+	block := provider()
+	if block == nil {
+		return nil
+	}
+
+	msg := WSMessage{
+		Event: EventNewBlock,
+		Data: map[string]interface{}{
+			"height":    block.Header.Height,
+			"hash":      utils.HashToString(block.Header.Hash),
+			"prevHash":  utils.HashToString(block.Header.PrevHash),
+			"timestamp": block.Header.Timestamp,
+			"txCount":   len(block.Transactions),
+		},
+	}
+	data, _ := json.Marshal(msg)
+	return data
 }
 
 // Run runs the Hub
@@ -155,6 +231,8 @@ func (h *WSHub) BroadcastConsensusState(state string, height uint64, round uint3
 	}
 }
 
+
+
 // HandleWebSocket WebSocket connection handler
 func HandleWebSocket(hub *WSHub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -181,6 +259,16 @@ func HandleWebSocket(hub *WSHub) http.HandlerFunc {
 		}
 		data, _ := json.Marshal(welcomeMsg)
 		client.send <- data
+
+		// Send current consensus state immediately after connection
+		if stateData := hub.getCurrentConsensusState(); stateData != nil {
+			client.send <- stateData
+		}
+
+		// Send latest block immediately after connection
+		if blockData := hub.getLatestBlockMessage(); blockData != nil {
+			client.send <- blockData
+		}
 
 		// Start read/write goroutines
 		go client.writePump()

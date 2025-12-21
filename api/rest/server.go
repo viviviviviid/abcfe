@@ -16,13 +16,14 @@ import (
 
 // Server REST API server structure
 type Server struct {
-	port       int
-	httpServer *http.Server
-	blockchain *core.BlockChain
-	wallet     *wallet.WalletManager
-	wsHub      *api.WSHub
-	consensus  *consensus.Consensus
-	p2p        *p2p.P2PService
+	port            int
+	httpServer      *http.Server
+	blockchain      *core.BlockChain
+	wallet          *wallet.WalletManager
+	wsHub           *api.WSHub
+	consensus       *consensus.Consensus
+	consensusEngine *consensus.ConsensusEngine
+	p2p             *p2p.P2PService
 }
 
 // NewServer creates API server instance
@@ -42,7 +43,7 @@ func (s *Server) Start() error {
 	// Start WebSocket Hub
 	go s.wsHub.Run()
 
-	router := setupRouter(s.blockchain, s.wallet, s.wsHub, s.consensus, s.p2p)
+	router := setupRouter(s.blockchain, s.wallet, s.wsHub, s.consensus, s.consensusEngine, s.p2p)
 
 	addr := fmt.Sprintf(":%d", s.port)
 	s.httpServer = &http.Server{
@@ -83,4 +84,14 @@ func (s *Server) SetP2P(p2pService *p2p.P2PService) {
 // GetP2P returns P2P service
 func (s *Server) GetP2P() *p2p.P2PService {
 	return s.p2p
+}
+
+// SetConsensusEngine sets ConsensusEngine
+func (s *Server) SetConsensusEngine(engine *consensus.ConsensusEngine) {
+	s.consensusEngine = engine
+}
+
+// GetConsensusEngine returns ConsensusEngine
+func (s *Server) GetConsensusEngine() *consensus.ConsensusEngine {
+	return s.consensusEngine
 }

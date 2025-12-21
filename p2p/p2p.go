@@ -21,7 +21,7 @@ type P2PService struct {
 	Blockchain *core.BlockChain
 
 	// Message handler
-	blockHandler    func(*core.Block)
+	blockHandler     func(*core.Block)
 	txHandler       func(*core.Transaction)
 	proposalHandler func(height uint64, round uint32, blockHash prt.Hash, block *core.Block)
 	voteHandler     func(height uint64, round uint32, voteType uint8, blockHash prt.Hash, voterID prt.Address, signature prt.Signature)
@@ -171,6 +171,7 @@ func (s *P2PService) SetVoteHandler(handler func(height uint64, round uint32, vo
 	defer s.mu.Unlock()
 	s.voteHandler = handler
 }
+
 
 // handleMessage processes received message
 func (s *P2PService) handleMessage(msg *Message, peer *Peer) {
@@ -677,6 +678,12 @@ func (s *P2PService) relayMessage(msg *Message, sender *Peer) {
 	}
 	s.markMessageSeen(msgID)
 
+	s.relayMessageWithoutDuplicateCheck(msg, sender)
+}
+
+// relayMessageWithoutDuplicateCheck relays message without duplicate check
+// Used when duplicate check is already done by the caller
+func (s *P2PService) relayMessageWithoutDuplicateCheck(msg *Message, sender *Peer) {
 	s.Node.mu.RLock()
 	peers := make([]*Peer, 0, len(s.Node.Peers))
 	for _, peer := range s.Node.Peers {

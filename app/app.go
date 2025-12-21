@@ -120,6 +120,9 @@ func New(configPath string) (*App, error) {
 	// Set P2P service in REST server
 	app.restServer.SetP2P(app.P2PService)
 
+	// Set ConsensusEngine in REST server (for vote progress API)
+	app.restServer.SetConsensusEngine(app.ConsensusEngine)
+
 	// Set P2P broadcast and WebSocket notification callback on block commit
 	app.ConsensusEngine.SetBlockCommitCallback(func(block *core.Block) {
 		// P2P Broadcast
@@ -139,6 +142,33 @@ func New(configPath string) (*App, error) {
 
 	// Set BlockSyncer in ConsensusEngine (for sync on timeout)
 	app.ConsensusEngine.SetBlockSyncer(app.P2PService)
+
+	// Set StateBroadcaster in ConsensusEngine (for WebSocket state updates)
+	app.ConsensusEngine.SetStateBroadcaster(app.restServer.GetWSHub())
+
+	// Set ConsensusStateProvider for WebSocket (sends current state on new connection)
+	app.restServer.GetWSHub().SetConsensusStateProvider(func() (string, uint64, uint32, string) {
+		status := app.ConsensusEngine.GetStatus()
+		state := status["state"].(consensus.ConsensusState)
+		height := status["currentHeight"].(uint64)
+		round := status["currentRound"].(uint32)
+		proposerAddr := status["proposerAddr"].(string)
+
+		return string(state), height, round, proposerAddr
+	})
+
+	// Set LatestBlockProvider for WebSocket (sends latest block on new connection)
+	app.restServer.GetWSHub().SetLatestBlockProvider(func() *core.Block {
+		height, err := app.BlockChain.GetLatestHeight()
+		if err != nil || height == 0 {
+			return nil
+		}
+		block, err := app.BlockChain.GetBlockByHeight(height)
+		if err != nil {
+			return nil
+		}
+		return block
+	})
 
 	// Deliver Proposal to ConsensusEngine when received from P2P
 	app.P2PService.SetProposalHandler(func(height uint64, round uint32, blockHash prt.Hash, block *core.Block) {

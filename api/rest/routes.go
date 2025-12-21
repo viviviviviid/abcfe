@@ -11,7 +11,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-func setupRouter(blockchain *core.BlockChain, walletMgr *wallet.WalletManager, wsHub *api.WSHub, cons *consensus.Consensus, p2pService *p2p.P2PService) http.Handler {
+func setupRouter(blockchain *core.BlockChain, walletMgr *wallet.WalletManager, wsHub *api.WSHub, cons *consensus.Consensus, consEngine *consensus.ConsensusEngine, p2pService *p2p.P2PService) http.Handler {
 	r := mux.NewRouter()
 
 	// Middleware setup
@@ -32,7 +32,7 @@ func setupRouter(blockchain *core.BlockChain, walletMgr *wallet.WalletManager, w
 	apiRouter.HandleFunc("/stats", GetNetworkStats(blockchain, wsHub)).Methods("GET")
 
 	// Consensus status API
-	apiRouter.HandleFunc("/consensus/status", GetConsensusStatus(cons)).Methods("GET")
+	apiRouter.HandleFunc("/consensus/status", GetConsensusStatus(cons, consEngine)).Methods("GET")
 
 	// Block related API
 	apiRouter.HandleFunc("/blocks", GetBlocks(blockchain)).Methods("GET")          // Block list (Pagination)

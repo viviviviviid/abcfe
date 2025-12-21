@@ -839,7 +839,7 @@ func GetNetworkStats(bc *core.BlockChain, hub *api.WSHub) http.HandlerFunc {
 }
 
 // GetConsensusStatus gets consensus status
-func GetConsensusStatus(cons *consensus.Consensus) http.HandlerFunc {
+func GetConsensusStatus(cons *consensus.Consensus, consEngine *consensus.ConsensusEngine) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if cons == nil {
 			sendResp(w, http.StatusInternalServerError, nil, fmt.Errorf("consensus not initialized"))
@@ -879,6 +879,11 @@ func GetConsensusStatus(cons *consensus.Consensus) http.HandlerFunc {
 			"votingPower":   votingPower,
 		}
 
+		// Add vote progress if ConsensusEngine is available
+		if consEngine != nil {
+			status["voteProgress"] = consEngine.GetVoteProgress()
+		}
+
 		sendResp(w, http.StatusOK, status, nil)
 	}
 }
@@ -898,7 +903,7 @@ func GetP2PPeers(p2pService *p2p.P2PService) http.HandlerFunc {
 			peerInfo := map[string]interface{}{
 				"id":         peer.ID,
 				"address":    peer.Address,
-				"state":      peer.State,
+				"state":      peer.State.String(),
 				"version":    peer.Version,
 				"bestHeight": peer.BestHeight,
 				"lastSeen":   peer.LastSeen.Unix(),

@@ -24,6 +24,24 @@ const (
 	PeerStateActive
 )
 
+// String returns the string representation of PeerState
+func (s PeerState) String() string {
+	switch s {
+	case PeerStateDisconnected:
+		return "DISCONNECTED"
+	case PeerStateConnecting:
+		return "CONNECTING"
+	case PeerStateConnected:
+		return "CONNECTED"
+	case PeerStateHandshaking:
+		return "HANDSHAKING"
+	case PeerStateActive:
+		return "ACTIVE"
+	default:
+		return "UNKNOWN"
+	}
+}
+
 // Peer information
 type Peer struct {
 	ID         string

@@ -768,6 +768,8 @@ curl -X POST http://localhost:8000/api/v1/wallet/account/new
 
 ## 6. WebSocket 실시간 알림
 
+> **📅 마지막 업데이트: 2025-12-21** - `vote_progress` 이벤트 추가, `node_state_update` 제거 (효율성 개선)
+
 WebSocket을 통해 블록체인 이벤트를 실시간으로 수신할 수 있습니다.
 
 ### 6.1 연결
@@ -776,10 +778,18 @@ WebSocket을 통해 블록체인 이벤트를 실시간으로 수신할 수 있�
 
 ### 6.2 이벤트 타입
 
-1. **new_block**: 새 블록이 생성되었을 때
-2. **new_transaction**: 새 트랜잭션이 멤풀에 추가되었을 때
-3. **block_confirmed**: 블록이 확정되었을 때
-4. **consensus_state_change**: 컨센서스 상태가 변경되었을 때
+| 이벤트 | 설명 |
+|--------|------|
+| `connected` | WebSocket 연결 성공 |
+| `new_block` | 새 블록이 생성되었을 때 |
+| `new_transaction` | 새 트랜잭션이 멤풀에 추가되었을 때 |
+| `block_confirmed` | 블록이 확정되었을 때 |
+| `consensus_state_change` | 컨센서스 상태가 변경되었을 때 (제안자 정보 포함) |
+| `vote_progress` | 투표 진행 상황 (prevote/precommit) |
+
+> 💡 **효율적인 설계**: `consensus_state_change` 이벤트에 `proposerAddr` 정보가 포함되어 있어,
+> 프론트엔드에서 어떤 노드가 제안자인지 판단할 수 있습니다.
+> 블록당 4~5개 이벤트만 전송되어 네트워크 부하가 최소화됩니다.
 
 ### 6.3 JavaScript 예제
 
@@ -795,29 +805,34 @@ ws.onopen = () => {
 // 메시지 수신
 ws.onmessage = (event) => {
   const message = JSON.parse(event.data);
-  
-  switch(message.type) {
+
+  switch(message.event) {
+    case 'connected':
+      console.log('Connected:', message.data.message);
+      break;
+
     case 'new_block':
       console.log('New block:', message.data);
       // 블록 정보: height, hash, timestamp, txCount 등
       updateBlockUI(message.data);
       break;
-      
+
     case 'new_transaction':
       console.log('New transaction:', message.data);
       // 트랜잭션 정보: txId, from, to, amount 등
       updateMempoolUI(message.data);
       break;
-      
-    case 'block_confirmed':
-      console.log('Block confirmed:', message.data);
-      // 확정된 블록 정보
-      break;
-      
+
     case 'consensus_state_change':
       console.log('Consensus state:', message.data);
-      // 컨센서스 상태: state, height, round, proposer
+      // 컨센서스 상태: state, height, round, proposerAddr
       updateConsensusUI(message.data);
+      break;
+
+    case 'vote_progress':
+      console.log('Vote progress:', message.data);
+      // 투표 진행: voteType, percentage, hasMajority
+      updateVoteUI(message.data);
       break;
   }
 };
@@ -838,64 +853,109 @@ ws.onerror = (error) => {
 #### new_block
 ```json
 {
-  "type": "new_block",
+  "event": "new_block",
   "data": {
     "height": 43,
     "hash": "0xabcd1234...",
     "prevHash": "0x9876...",
     "timestamp": 1702123456,
-    "txCount": 5,
-    "merkleRoot": "0xdef456...",
-    "proposer": "0xabcd..."
-  },
-  "timestamp": 1702123456
+    "txCount": 5
+  }
 }
 ```
 
 #### consensus_state_change
 ```json
 {
-  "type": "consensus_state_change",
+  "event": "consensus_state_change",
   "data": {
     "state": "PROPOSING",
     "height": 43,
     "round": 0,
-    "proposer": "0xabcd1234..."
-  },
-  "timestamp": 1702123456
+    "proposerAddr": "90efb3f6337ff1cc31398426ef62e4f48d9d73e6"
+  }
 }
 ```
 
-### 6.5 Python 예제
+#### vote_progress
+```json
+{
+  "event": "vote_progress",
+  "data": {
+    "height": 43,
+    "round": 0,
+    "voteType": "prevote",
+    "votedPower": 2000,
+    "totalPower": 3000,
+    "voteCount": 2,
+    "percentage": 66.67,
+    "hasMajority": false
+  }
+}
+```
+
+### 6.5 프론트엔드 노드 시각화 가이드
+
+`consensus_state_change` 이벤트를 활용한 효율적인 노드 시각화 방법:
+
+```javascript
+// 노드 상태 관리
+const nodeStates = {};  // nodeId -> state
+
+function handleConsensusStateChange(data) {
+  const { state, proposerAddr, height, round } = data;
+
+  // 모든 노드 상태 업데이트
+  for (const nodeId of allValidatorIds) {
+    if (state === 'PROPOSING') {
+      // 제안자만 PROPOSING, 나머지는 IDLE
+      nodeStates[nodeId] = (nodeId === proposerAddr) ? 'PROPOSING' : 'IDLE';
+    } else {
+      // VOTING, COMMITTING, IDLE: 모든 노드 동일 상태
+      nodeStates[nodeId] = state;
+    }
+  }
+
+  updateVisualization(nodeStates);
+}
+```
+
+> 💡 **장점**: 개별 노드 상태를 P2P로 브로드캐스트하지 않아 네트워크 효율이 높습니다.
+
+### 6.6 Python 예제
 
 ```python
-import websocket
+import asyncio
+import websockets
 import json
 
-def on_message(ws, message):
-    data = json.loads(message)
-    print(f"Received: {data['type']}")
-    print(f"Data: {data['data']}")
+async def monitor_nodes():
+    uri = "ws://localhost:8000/ws"
+    async with websockets.connect(uri) as ws:
+        print("Connected to WebSocket!")
 
-def on_error(ws, error):
-    print(f"Error: {error}")
+        while True:
+            msg = await ws.recv()
+            data = json.loads(msg)
+            event = data.get('event', '')
 
-def on_close(ws, close_status_code, close_msg):
-    print("WebSocket closed")
+            if event == 'consensus_state_change':
+                c = data['data']
+                print(f"🔄 State: {c['state']} H:{c['height']} "
+                      f"Proposer: {c['proposerAddr'][:16] if c['proposerAddr'] else 'N/A'}")
 
-def on_open(ws):
-    print("WebSocket connected")
+            elif event == 'new_block':
+                print(f"📦 New Block: height={data['data']['height']}")
+
+            elif event == 'vote_progress':
+                v = data['data']
+                print(f"🗳️ {v['voteType']}: {v['percentage']:.1f}% "
+                      f"({v['voteCount']} votes, majority: {v['hasMajority']})")
 
 if __name__ == "__main__":
-    ws = websocket.WebSocketApp(
-        "ws://localhost:8000/ws",
-        on_open=on_open,
-        on_message=on_message,
-        on_error=on_error,
-        on_close=on_close
-    )
-    ws.run_forever()
+    asyncio.run(monitor_nodes())
 ```
+
 
 ---
 
@@ -1232,6 +1292,8 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
 
 ## 11. API 레퍼런스 요약
 
+### REST API
+
 | 메서드 | 엔드포인트 | 설명 |
 |--------|-----------|------|
 | GET | `/api/v1/status` | 노드 상태 조회 |
@@ -1249,7 +1311,18 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
 | GET | `/api/v1/stats` | 네트워크 통계 |
 | GET | `/api/v1/wallet/accounts` | 지갑 계정 목록 |
 | POST | `/api/v1/wallet/account/new` | 새 계정 생성 |
-| WS | `/ws` | WebSocket 연결 |
+| GET | `/api/v1/p2p/peers` | P2P 피어 목록 |
+| GET | `/api/v1/p2p/status` | P2P 상태 |
+
+### WebSocket 이벤트 (📅 2025-12-21 업데이트)
+
+| 이벤트 | 설명 |
+|--------|------|
+| `connected` | 연결 성공 |
+| `new_block` | 새 블록 생성 |
+| `new_transaction` | 새 트랜잭션 추가 |
+| `consensus_state_change` | 컨센서스 상태 변경 (제안자 정보 포함) |
+| `vote_progress` | 투표 진행 상황 |
 
 ---
 

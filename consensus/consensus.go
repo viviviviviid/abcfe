@@ -15,11 +15,16 @@ import (
 
 // Consensus constants
 const (
-	MinStakeAmount     = 1000 // Minimum stake amount
-	MaxValidators      = 100  // Maximum validators
-	BlockProduceTimeMs = 100  // Block production check interval (milliseconds)
-	BlockIntervalMs    = 100  // Minimum interval between blocks (milliseconds)
-	RoundTimeoutMs     = 1000 // Round timeout (milliseconds)
+	MinStakeAmount     = 1000  // Minimum stake amount
+	MaxValidators      = 100   // Maximum validators
+	BlockProduceTimeMs = 1000  // Block production check interval (milliseconds)
+	BlockIntervalMs    = 1000 // Minimum interval between blocks (milliseconds)
+	RoundTimeoutMs     = 20000 // Round timeout (milliseconds)
+
+	// Phase duration constants (for observable state changes via WebSocket)
+	ProposingDurationMs  = 2000 // Proposing phase duration (milliseconds)
+	VotingDurationMs     = 3000 // Voting phase duration (milliseconds)
+	CommittingDurationMs = 2000 // Committing phase duration (milliseconds)
 )
 
 // ConsensusState consensus state

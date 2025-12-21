@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -21,6 +22,11 @@ type P2PBroadcaster interface {
 type BlockSyncer interface {
 	SyncBlocks() error
 	GetPeerCount() int
+}
+
+// StateBroadcaster WebSocket state broadcast interface
+type StateBroadcaster interface {
+	BroadcastConsensusState(state string, height uint64, round uint32, proposerAddr string)
 }
 
 // ConsensusEngine consensus engine (execution logic)
@@ -57,6 +63,9 @@ type ConsensusEngine struct {
 
 	// Block interval control
 	lastBlockTime int64 // Last block commit timestamp (Unix milliseconds)
+
+	// WebSocket state broadcaster
+	stateBroadcaster StateBroadcaster
 }
 
 // NewConsensusEngine creates a new consensus engine
@@ -88,6 +97,28 @@ func (e *ConsensusEngine) SetBlockSyncer(syncer BlockSyncer) {
 	defer e.mu.Unlock()
 	e.syncer = syncer
 }
+
+// SetStateBroadcaster sets WebSocket state broadcaster
+func (e *ConsensusEngine) SetStateBroadcaster(broadcaster StateBroadcaster) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.stateBroadcaster = broadcaster
+}
+
+// broadcastState broadcasts current consensus state via WebSocket
+func (e *ConsensusEngine) broadcastState(proposerAddr string) {
+	if e.stateBroadcaster == nil {
+		return
+	}
+	e.stateBroadcaster.BroadcastConsensusState(
+		string(e.consensus.State),
+		e.consensus.CurrentHeight,
+		e.consensus.CurrentRound,
+		proposerAddr,
+	)
+}
+
+
 
 // Start starts the consensus engine
 func (e *ConsensusEngine) Start() error {
@@ -207,6 +238,12 @@ func (e *ConsensusEngine) runRound() {
 
 	// Check if I am the proposer
 	if isLocalProposer {
+		// Skip if already proposed for this height/round (waiting for votes)
+		if e.proposedBlock != nil && e.proposedBlock.Header.Height == nextBlockHeight {
+			// Already proposed, just wait for votes
+			return
+		}
+
 		e.proposeBlock()
 
 		// BFT mode: Broadcast proposal and collect votes
@@ -288,9 +325,22 @@ func (e *ConsensusEngine) produceBlockSolo() {
 
 // proposeBlock proposes a block (PoA mode: commit immediately without vote)
 func (e *ConsensusEngine) proposeBlock() {
+	// Proposer address
+	var proposerAddr prt.Address
+	var proposerAddrStr string
+	if e.consensus.LocalValidator != nil {
+		proposerAddr = e.consensus.LocalValidator.Address
+		proposerAddrStr = utils.AddressToString(proposerAddr)
+	}
+
+	// Set state to PROPOSING and broadcast
 	e.consensus.mu.Lock()
 	e.consensus.State = StateProposing
 	e.consensus.mu.Unlock()
+	e.broadcastState(proposerAddrStr)
+
+	// Wait for proposing phase duration (observable via WebSocket)
+	time.Sleep(time.Duration(ProposingDurationMs) * time.Millisecond)
 
 	// Check current height
 	currentHeight, err := e.blockchain.GetLatestHeight()
@@ -303,12 +353,6 @@ func (e *ConsensusEngine) proposeBlock() {
 	prevBlock, err := e.blockchain.GetBlockByHeight(currentHeight)
 	if err == nil {
 		prevHash = prevBlock.Header.Hash
-	}
-
-	// Proposer address
-	var proposerAddr prt.Address
-	if e.consensus.LocalValidator != nil {
-		proposerAddr = e.consensus.LocalValidator.Address
 	}
 
 	// Block timestamp (used consistently across all nodes)
@@ -333,7 +377,7 @@ func (e *ConsensusEngine) proposeBlock() {
 
 	e.proposedBlock = newBlock
 
-	logger.Info("[Consensus] Proposed block ", newBlock.Header.Height, " (hash: ", utils.HashToString(newBlock.Header.Hash)[:16], ", proposer: ", utils.AddressToString(proposerAddr)[:16], ")")
+	logger.Info("[Consensus] Proposed block ", newBlock.Header.Height, " (hash: ", utils.HashToString(newBlock.Header.Hash)[:16], ", proposer: ", proposerAddrStr[:16], ")")
 }
 
 // broadcastProposal starts proposal broadcast and voting (BFT mode)
@@ -369,6 +413,12 @@ func (e *ConsensusEngine) broadcastProposal() {
 	}
 
 	logger.Info("[Consensus] Broadcast proposal at height ", height, " round ", round)
+
+	// Set state to VOTING and broadcast
+	e.consensus.mu.Lock()
+	e.consensus.State = StateVoting
+	e.consensus.mu.Unlock()
+	e.broadcastState(proposerID)
 
 	// Start round timeout timer
 	e.startRoundTimer()
@@ -438,6 +488,23 @@ func (e *ConsensusEngine) HandleProposal(height uint64, round uint32, blockHash 
 	e.proposedBlock = block
 	e.prevotes = NewVoteSet(height, round, VoteTypePrevote)
 	e.precommits = NewVoteSet(height, round, VoteTypePrecommit)
+
+	proposerAddr := utils.AddressToString(block.Proposer)
+
+	// Broadcast PROPOSING state first (so frontend can see proposer)
+	e.consensus.mu.Lock()
+	e.consensus.State = StateProposing
+	e.consensus.mu.Unlock()
+	e.broadcastState(proposerAddr)
+
+	// Wait for proposing phase duration (same as proposer node)
+	time.Sleep(time.Duration(ProposingDurationMs) * time.Millisecond)
+
+	// Then transition to VOTING
+	e.consensus.mu.Lock()
+	e.consensus.State = StateVoting
+	e.consensus.mu.Unlock()
+	e.broadcastState(proposerAddr)
 
 	// Start round timeout timer
 	e.startRoundTimer()
@@ -519,11 +586,109 @@ func (e *ConsensusEngine) HandleVote(vote *Vote) {
 	}
 }
 
-// castVote creates and sends vote
+// castVote creates and sends vote with random delay
 func (e *ConsensusEngine) castVote(voteType VoteType, blockHash prt.Hash) {
 	if e.consensus.LocalValidator == nil || e.consensus.LocalProposer == nil {
 		return
 	}
+
+	// Capture current state for the goroutine
+	height := e.consensus.CurrentHeight
+	round := e.consensus.CurrentRound
+	voterID := e.consensus.LocalValidator.Address
+	votingPower := e.consensus.LocalValidator.VotingPower
+	totalPower := e.consensus.ValidatorSet.TotalVotingPower
+
+	// Random delay within VotingDurationMs to spread out votes across validators
+	// Run in goroutine to avoid blocking mutex
+	go func() {
+		randomDelay := rand.Intn(VotingDurationMs)
+		time.Sleep(time.Duration(randomDelay) * time.Millisecond)
+
+		e.mu.Lock()
+		defer e.mu.Unlock()
+
+		// Check if still valid (height/round might have changed)
+		if e.consensus.CurrentHeight != height || e.consensus.CurrentRound != round {
+			return
+		}
+
+		// Create signature
+		sig, err := e.consensus.LocalProposer.signBlockHash(blockHash)
+		if err != nil {
+			logger.Error("[Consensus] Failed to sign vote: ", err)
+			return
+		}
+
+		vote := &Vote{
+			Height:    height,
+			Round:     round,
+			Type:      voteType,
+			BlockHash: blockHash,
+			VoterID:   voterID,
+			Signature: sig,
+			Timestamp: time.Now().Unix(),
+		}
+
+		// Broadcast vote via P2P
+		if e.p2p != nil {
+			voterIDStr := utils.AddressToString(voterID)
+			if err := e.p2p.BroadcastVote(
+				vote.Height,
+				vote.Round,
+				vote.BlockHash,
+				uint8(voteType),
+				voterIDStr,
+				vote.Signature,
+			); err != nil {
+				logger.Error("[Consensus] Failed to broadcast vote: ", err)
+			}
+		}
+
+		// Handle local vote
+		switch voteType {
+		case VoteTypePrevote:
+			if e.prevotes != nil {
+				e.prevotes.AddVote(vote, votingPower)
+
+				if e.prevotes.HasTwoThirdsMajority(totalPower) {
+					// Cast precommit (will run in new goroutine with its own delay)
+					go e.castVoteInternal(VoteTypePrecommit, blockHash, height, round)
+				}
+			}
+		case VoteTypePrecommit:
+			if e.precommits != nil {
+				e.precommits.AddVote(vote, votingPower)
+
+				if e.precommits.HasTwoThirdsMajority(totalPower) && e.proposedBlock != nil {
+					logger.Info("[Consensus] Local precommit triggered 2/3+ at height ", height)
+					e.commitBlockWithSignatures(e.proposedBlock)
+				}
+			}
+		}
+	}()
+}
+
+// castVoteInternal casts vote with delay (called from goroutine, needs to acquire lock)
+func (e *ConsensusEngine) castVoteInternal(voteType VoteType, blockHash prt.Hash, expectedHeight uint64, expectedRound uint32) {
+	if e.consensus.LocalValidator == nil || e.consensus.LocalProposer == nil {
+		return
+	}
+
+	randomDelay := rand.Intn(VotingDurationMs)
+	time.Sleep(time.Duration(randomDelay) * time.Millisecond)
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	// Check if still valid
+	if e.consensus.CurrentHeight != expectedHeight || e.consensus.CurrentRound != expectedRound {
+		return
+	}
+
+	votingPower := e.consensus.LocalValidator.VotingPower
+	totalPower := e.consensus.ValidatorSet.TotalVotingPower
+	voterID := e.consensus.LocalValidator.Address
 
 	// Create signature
 	sig, err := e.consensus.LocalProposer.signBlockHash(blockHash)
@@ -533,49 +698,37 @@ func (e *ConsensusEngine) castVote(voteType VoteType, blockHash prt.Hash) {
 	}
 
 	vote := &Vote{
-		Height:    e.consensus.CurrentHeight,
-		Round:     e.consensus.CurrentRound,
+		Height:    expectedHeight,
+		Round:     expectedRound,
 		Type:      voteType,
 		BlockHash: blockHash,
-		VoterID:   e.consensus.LocalValidator.Address,
+		VoterID:   voterID,
 		Signature: sig,
 		Timestamp: time.Now().Unix(),
 	}
 
 	// Broadcast vote via P2P
 	if e.p2p != nil {
-		voterID := utils.AddressToString(e.consensus.LocalValidator.Address)
+		voterIDStr := utils.AddressToString(voterID)
 		if err := e.p2p.BroadcastVote(
 			vote.Height,
 			vote.Round,
 			vote.BlockHash,
 			uint8(voteType),
-			voterID,
+			voterIDStr,
 			vote.Signature,
 		); err != nil {
 			logger.Error("[Consensus] Failed to broadcast vote: ", err)
 		}
 	}
 
-	// Handle local vote
-	validator := e.consensus.LocalValidator
-	totalPower := e.consensus.ValidatorSet.TotalVotingPower
+	// Handle local vote (only precommit here)
+	if e.precommits != nil {
+		e.precommits.AddVote(vote, votingPower)
 
-	switch voteType {
-	case VoteTypePrevote:
-		if e.prevotes != nil {
-			e.prevotes.AddVote(vote, validator.VotingPower)
-			if e.prevotes.HasTwoThirdsMajority(totalPower) {
-				e.castVote(VoteTypePrecommit, blockHash)
-			}
-		}
-	case VoteTypePrecommit:
-		if e.precommits != nil {
-			e.precommits.AddVote(vote, validator.VotingPower)
-			if e.precommits.HasTwoThirdsMajority(totalPower) && e.proposedBlock != nil {
-				logger.Info("[Consensus] Local precommit triggered 2/3+ at height ", e.consensus.CurrentHeight)
-				e.commitBlockWithSignatures(e.proposedBlock)
-			}
+		if e.precommits.HasTwoThirdsMajority(totalPower) && e.proposedBlock != nil {
+			logger.Info("[Consensus] Local precommit triggered 2/3+ at height ", expectedHeight)
+			e.commitBlockWithSignatures(e.proposedBlock)
 		}
 	}
 }
@@ -622,9 +775,17 @@ func (e *ConsensusEngine) commitBlockWithSignatures(block *core.Block) {
 	// Reset consecutive timeout counter
 	e.consecutiveTimeouts = 0
 
+	// Get proposer address for broadcast
+	proposerAddr := utils.AddressToString(block.Proposer)
+
+	// Set state to COMMITTING and broadcast
 	e.consensus.mu.Lock()
 	e.consensus.State = StateCommitting
 	e.consensus.mu.Unlock()
+	e.broadcastState(proposerAddr)
+
+	// Wait for committing phase duration (observable via WebSocket)
+	time.Sleep(time.Duration(CommittingDurationMs) * time.Millisecond)
 
 	// Create CommitSignatures from precommits
 	if e.precommits != nil {
@@ -670,6 +831,9 @@ func (e *ConsensusEngine) commitBlockWithSignatures(block *core.Block) {
 	e.proposedBlock = nil
 	e.prevotes = nil
 	e.precommits = nil
+
+	// Broadcast IDLE state after commit
+	e.broadcastState("")
 }
 
 // startRoundTimer starts round timeout timer
@@ -812,6 +976,12 @@ func (e *ConsensusEngine) GetStatus() map[string]interface{} {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 
+	// Get current proposer address
+	proposerAddr := ""
+	if e.proposedBlock != nil {
+		proposerAddr = utils.AddressToString(e.proposedBlock.Proposer)
+	}
+
 	return map[string]interface{}{
 		"running":       e.running,
 		"state":         e.consensus.State,
@@ -819,6 +989,61 @@ func (e *ConsensusEngine) GetStatus() map[string]interface{} {
 		"currentRound":  e.consensus.CurrentRound,
 		"validators":    e.consensus.GetValidatorCount(),
 		"totalStaked":   e.consensus.GetTotalStaked(),
+		"proposerAddr":  proposerAddr,
+	}
+}
+
+// GetVoteProgress returns current vote progress
+func (e *ConsensusEngine) GetVoteProgress() map[string]interface{} {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	totalPower := e.consensus.ValidatorSet.TotalVotingPower
+
+	// Prevote progress
+	var prevoteVotedPower uint64
+	var prevoteCount int
+	var prevotePercentage float64
+	var prevoteHasMajority bool
+	if e.prevotes != nil {
+		prevoteVotedPower = e.prevotes.VotedPower
+		prevoteCount = len(e.prevotes.Votes)
+		if totalPower > 0 {
+			prevotePercentage = float64(prevoteVotedPower) / float64(totalPower) * 100
+		}
+		prevoteHasMajority = prevoteVotedPower*3 > totalPower*2
+	}
+
+	// Precommit progress
+	var precommitVotedPower uint64
+	var precommitCount int
+	var precommitPercentage float64
+	var precommitHasMajority bool
+	if e.precommits != nil {
+		precommitVotedPower = e.precommits.VotedPower
+		precommitCount = len(e.precommits.Votes)
+		if totalPower > 0 {
+			precommitPercentage = float64(precommitVotedPower) / float64(totalPower) * 100
+		}
+		precommitHasMajority = precommitVotedPower*3 > totalPower*2
+	}
+
+	return map[string]interface{}{
+		"height":     e.consensus.CurrentHeight,
+		"round":      e.consensus.CurrentRound,
+		"totalPower": totalPower,
+		"prevote": map[string]interface{}{
+			"votedPower":  prevoteVotedPower,
+			"voteCount":   prevoteCount,
+			"percentage":  prevotePercentage,
+			"hasMajority": prevoteHasMajority,
+		},
+		"precommit": map[string]interface{}{
+			"votedPower":  precommitVotedPower,
+			"voteCount":   precommitCount,
+			"percentage":  precommitPercentage,
+			"hasMajority": precommitHasMajority,
+		},
 	}
 }
 

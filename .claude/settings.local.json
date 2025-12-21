@@ -42,7 +42,12 @@
       "Bash(__NEW_LINE__ echo \"\")",
       "Bash(# Clean everything and rebuild ./clean_all.sh || true pkill -9 abcfed || true sleep 2 # Rebuild make build 2>&1)",
       "Bash(./run_api_test.sh:*)",
-      "Bash(./resume_poa.sh:*)"
+      "Bash(./resume_poa.sh:*)",
+      "Bash(./setup_multi_nodes.sh:*)",
+      "Bash(./start_poa.sh:*)",
+      "Bash(timeout 20 websocat:*)",
+      "Bash(timeout 25 websocat:*)",
+      "Bash(./check_nodes.sh:*)"
     ],
     "deny": [],
     "ask": []

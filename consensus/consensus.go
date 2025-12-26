@@ -18,7 +18,7 @@ const (
 	MinStakeAmount     = 1000  // Minimum stake amount
 	MaxValidators      = 100   // Maximum validators
 	BlockProduceTimeMs = 1000  // Block production check interval (milliseconds)
-	BlockIntervalMs    = 1000 // Minimum interval between blocks (milliseconds)
+	BlockIntervalMs    = 1000  // Minimum interval between blocks (milliseconds)
 	RoundTimeoutMs     = 20000 // Round timeout (milliseconds)
 
 	// Phase duration constants (for observable state changes via WebSocket)
@@ -31,9 +31,32 @@ const (
 type ConsensusState string
 
 const (
-	StateIdle       ConsensusState = "IDLE"
-	StateProposing  ConsensusState = "PROPOSING"
-	StateVoting     ConsensusState = "VOTING"
+	// StateIdle: 대기 상태
+	// 다음 블록 생성 라운드가 시작되기를 기다리는 상태입니다.
+	// 이전 블록이 확정된 후, 새로운 라운드가 시작될 때까지 대기합니다.
+	StateIdle ConsensusState = "IDLE"
+
+	// StateProposing: 블록 제안 상태
+	// 이번 라운드의 제안자(Proposer)가 새로운 블록을 생성하고 네트워크에 제안하는 상태입니다.
+	// 제안자는 멤풀에서 트랜잭션을 선택하고, 블록을 생성한 뒤 서명하여 브로드캐스트합니다.
+	StateProposing ConsensusState = "PROPOSING"
+
+	// StatePrevoting: 1차 투표 (Prevote) 상태
+	// 검증자들이 제안된 블록의 유효성을 검증하고 첫 번째 투표를 진행하는 상태입니다.
+	// 블록이 유효하면 찬성 투표를, 유효하지 않으면 반대 투표를 브로드캐스트합니다.
+	// 2/3 이상의 Prevote가 모이면 다음 단계(Precommit)로 진행합니다.
+	StatePrevoting ConsensusState = "PREVOTING"
+
+	// StatePrecommitting: 2차 투표 (Precommit) 상태
+	// Prevote에서 2/3 이상 동의를 얻은 후, 최종 확정을 위한 두 번째 투표를 진행하는 상태입니다.
+	// 이 단계는 네트워크 전체가 같은 블록에 동의했음을 확인하는 과정입니다.
+	// 2/3 이상의 Precommit이 모이면 블록을 확정(Commit)합니다.
+	StatePrecommitting ConsensusState = "PRECOMMITTING"
+
+	// StateCommitting: 블록 확정 상태
+	// 2/3 이상의 Precommit 투표를 받아 블록을 최종 확정하는 상태입니다.
+	// 블록을 체인에 추가하고, DB에 저장하며, UTXO 상태를 업데이트합니다.
+	// 완료 후 다음 블록을 위해 Idle 상태로 전환됩니다.
 	StateCommitting ConsensusState = "COMMITTING"
 )
 

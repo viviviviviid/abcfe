@@ -414,9 +414,9 @@ func (e *ConsensusEngine) broadcastProposal() {
 
 	logger.Info("[Consensus] Broadcast proposal at height ", height, " round ", round)
 
-	// Set state to VOTING and broadcast
+	// Set state to PREVOTING and broadcast
 	e.consensus.mu.Lock()
-	e.consensus.State = StateVoting
+	e.consensus.State = StatePrevoting
 	e.consensus.mu.Unlock()
 	e.broadcastState(proposerID)
 
@@ -500,9 +500,9 @@ func (e *ConsensusEngine) HandleProposal(height uint64, round uint32, blockHash 
 	// Wait for proposing phase duration (same as proposer node)
 	time.Sleep(time.Duration(ProposingDurationMs) * time.Millisecond)
 
-	// Then transition to VOTING
+	// Then transition to PREVOTING
 	e.consensus.mu.Lock()
-	e.consensus.State = StateVoting
+	e.consensus.State = StatePrevoting
 	e.consensus.mu.Unlock()
 	e.broadcastState(proposerAddr)
 
@@ -566,6 +566,17 @@ func (e *ConsensusEngine) HandleVote(vote *Vote) {
 			// Proceed to precommit if 2/3+
 			if e.prevotes.HasTwoThirdsMajority(totalPower) {
 				logger.Debug("[Consensus] Prevote 2/3+ reached at height ", vote.Height, " (", e.prevotes.VotedPower, "/", totalPower, ")")
+
+				// Transition to PRECOMMITTING state
+				e.consensus.mu.Lock()
+				if e.consensus.State == StatePrevoting {
+					e.consensus.State = StatePrecommitting
+					e.consensus.mu.Unlock()
+					e.broadcastState("")
+				} else {
+					e.consensus.mu.Unlock()
+				}
+
 				e.castVote(VoteTypePrecommit, vote.BlockHash)
 			}
 		}
@@ -652,6 +663,16 @@ func (e *ConsensusEngine) castVote(voteType VoteType, blockHash prt.Hash) {
 				e.prevotes.AddVote(vote, votingPower)
 
 				if e.prevotes.HasTwoThirdsMajority(totalPower) {
+					// Transition to PRECOMMITTING state
+					e.consensus.mu.Lock()
+					if e.consensus.State == StatePrevoting {
+						e.consensus.State = StatePrecommitting
+						e.consensus.mu.Unlock()
+						e.broadcastState("")
+					} else {
+						e.consensus.mu.Unlock()
+					}
+
 					// Cast precommit (will run in new goroutine with its own delay)
 					go e.castVoteInternal(VoteTypePrecommit, blockHash, height, round)
 				}

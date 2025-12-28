@@ -1,5 +1,7 @@
 # ABCFe Node 사용자 가이드
 
+> **📅 마지막 업데이트: 2025-12-28**
+
 이 가이드는 ABCFe 블록체인 노드를 실행하고, 지갑을 생성하며, 트랜잭션을 전송하고, API 및 WebSocket을 사용하는 전체 과정을 설명합니다.
 
 ## 🚀 빠른 시작
@@ -28,12 +30,21 @@ make build
 
 1. [노드 빌드 및 실행](#1-노드-빌드-및-실행) *(노드 운영자)*
 2. [노드 운영자의 지갑 관리 (CLI)](#2-노드-운영자의-지갑-관리-cli) *(노드 운영자)*
-3. [일반 유저의 지갑 관리 (클라이언트 사이드)](#3-일반-유저의-지갑-관리-클라이언트-사이드) *(일반 유저)*
+3. [일반 유저의 지갑 관리 (클라이언트 사이드)](#3-일반-유저의-지갑-관리-클라이언트-사이드) *(일반 유저)* ⭐
+   - [3.2 암호화 스펙 (중요!)](#32-암호화-스펙-중요) - **반드시 먼저 읽으세요!**
+   - [3.3 Python 예제](#33-python-예제-완전한-워크플로우)
+   - [3.4 JavaScript 예제](#34-javascript-예제-nodejs)
+   - [3.5 클라이언트 서명 시 주의사항](#35-클라이언트-서명-시-주의사항)
+   - [3.6 Go 예제](#36-go-예제-클라이언트)
 4. [트랜잭션 전송](#4-트랜잭션-전송) *(모두)*
 5. [REST API 사용](#5-rest-api-사용) *(모두)*
 6. [WebSocket 실시간 알림](#6-websocket-실시간-알림) *(모두)*
-7. [멀티 노드 환경](#7-멀티-노드-환경) *(노드 운영자)*
-8. [관리 스크립트](#8-관리-스크립트) ⭐ *(노드 운영자)*
+7. [관리 스크립트](#7-관리-스크립트) ⭐ *(노드 운영자)*
+8. [멀티 노드 환경](#8-멀티-노드-환경) *(노드 운영자)*
+9. [실전 시나리오](#9-실전-시나리오) *(모두)*
+10. [문제 해결](#10-문제-해결) *(모두)*
+11. [추가 자료](#11-추가-자료)
+12. [API 레퍼런스 요약](#12-api-레퍼런스-요약)
 
 ---
 
@@ -67,7 +78,8 @@ Path = "./resource/db/leveldb_3000.db"
 Path = "./resource/wallet"
 
 [Server]
-RestPort = 8000
+RestPort = 8000           # 공개 API (0.0.0.0 - 외부 접근 가능)
+InternalRestPort = 8800   # 내부 API (127.0.0.1 - localhost만 접근)
 
 [Genesis]
 InitialAddresses = [
@@ -75,6 +87,8 @@ InitialAddresses = [
 ]
 InitialBalances = [100000000]
 ```
+
+> **보안 참고**: `InternalRestPort`를 설정하면 지갑/트랜잭션 전송 API는 localhost에서만 접근 가능합니다.
 
 ### 1.3 노드 실행
 
@@ -215,270 +229,39 @@ Accounts:
    - 서명된 트랜잭션을 `POST /api/v1/tx/signed`로 전송
    - 노드는 서명 검증 후 실행
 
-### 3.2 Python 예제 (완전한 워크플로우)
+### 3.2 트랜잭션 상세 가이드
 
-```python
-import hashlib
-import ecdsa
-from mnemonic import Mnemonic
-import requests
-import json
+> **트랜잭션 생성, 서명, 전송에 대한 상세 내용은 [TX_GUIDE.md](TX_GUIDE.md)를 참고하세요.**
 
-# 1. 니모닉 생성 (또는 기존 니모닉 사용)
-mnemo = Mnemonic("english")
-mnemonic_words = mnemo.generate(strength=128)  # 12단어
-print(f"Mnemonic: {mnemonic_words}")
+TX_GUIDE.md에서 다루는 내용:
+- 암호화 스펙 (P-256, ECDSA, ASN.1 DER 등)
+- TX ID 계산 방법 및 JSON 인코딩 규칙
+- Python / JavaScript / Go 완전한 예제 코드
+- 다중 Output 트랜잭션
+- 주의사항 및 트러블슈팅
 
-# 2. 니모닉으로부터 시드 생성
-seed = mnemo.to_seed(mnemonic_words, passphrase="")
+### 3.3 암호화 스펙 요약
 
-# 3. 개인키 유도 (간단한 예제, 실제로는 BIP-32/44 사용)
-private_key_bytes = seed[:32]
-sk = ecdsa.SigningKey.from_string(private_key_bytes, curve=ecdsa.SECP256k1)
-vk = sk.get_verifying_key()
+| 항목 | 값 |
+|------|-----|
+| **타원 곡선** | P-256 (secp256r1) - secp256k1 아님! |
+| **서명 포맷** | ASN.1 DER |
+| **공개키 포맷** | PKIX/X.509 SubjectPublicKeyInfo |
+| **networkId** | `"abcfe-mainnet"` |
 
-# 4. 공개키에서 주소 생성
-public_key_bytes = b'\x04' + vk.to_string()  # 압축되지 않은 형식
-addr_hash = hashlib.sha256(public_key_bytes).digest()[:20]
-address = "0x" + addr_hash.hex()
-print(f"Address: {address}")
+### 3.4 보안 주의사항
 
-# 5. UTXO 조회
-response = requests.get(f"http://localhost:8000/api/v1/address/{address}/utxo")
-utxos = response.json()["data"]["utxos"]
-print(f"Available UTXOs: {len(utxos)}")
+> **⚠️ 중요**:
+> - 반드시 **P-256 (secp256r1)** 곡선을 사용해야 합니다!
+> - 공개키는 **PKIX 포맷**으로 인코딩해야 합니다!
+> - 서명은 **ASN.1 DER 포맷**이어야 합니다!
+> - `networkId`는 반드시 `"abcfe-mainnet"`을 사용해야 합니다!
 
-# 6. 트랜잭션 구성
-recipient = "0x9876543210fedcba9876543210fedcba98765432"
-amount = 1000
+추가적인 보안 권장사항:
 
-if utxos:
-    utxo = utxos[0]  # 첫 번째 UTXO 사용
-    
-    # 트랜잭션 데이터 구성 (서명할 데이터)
-    tx_data = {
-        "txId": utxo["txId"],
-        "outputIndex": utxo["outputIndex"],
-        "to": recipient,
-        "amount": amount
-    }
-    
-    # 7. 서명 생성
-    tx_bytes = json.dumps(tx_data, sort_keys=True).encode()
-    tx_hash = hashlib.sha256(tx_bytes).digest()
-    signature = sk.sign_digest(tx_hash, sigencode=ecdsa.util.sigencode_der)
-    
-    # 8. 서명된 트랜잭션 전송
-    signed_tx = {
-        "inputs": [{
-            "txId": utxo["txId"],
-            "outputIndex": utxo["outputIndex"],
-            "signature": "0x" + signature.hex(),
-            "publicKey": "0x" + public_key_bytes.hex()
-        }],
-        "outputs": [{
-            "to": recipient,
-            "amount": amount
-        }, {
-            "to": address,  # 잔액 반환
-            "amount": utxo["amount"] - amount - 100  # 수수료 제외
-        }],
-        "memo": "Payment from Python client",
-        "data": None,
-        "txType": 0
-    }
-    
-    response = requests.post(
-        "http://localhost:8000/api/v1/tx/signed",
-        json=signed_tx,
-        headers={"Content-Type": "application/json"}
-    )
-    
-    print(f"Response: {response.json()}")
-```
-
-### 3.3 JavaScript 예제 (브라우저/Node.js)
-
-```javascript
-const bip39 = require('bip39');
-const { HDKey } = require('@scure/bip32');
-const { keccak256 } = require('js-sha3');
-const secp256k1 = require('secp256k1');
-
-// 1. 니모닉 생성
-const mnemonic = bip39.generateMnemonic();
-console.log('Mnemonic:', mnemonic);
-
-// 2. 시드 생성
-const seed = bip39.mnemonicToSeedSync(mnemonic);
-
-// 3. HD 키 유도 (BIP-44: m/44'/60'/0'/0/0)
-const hdkey = HDKey.fromMasterSeed(seed);
-const path = "m/44'/60'/0'/0/0";
-const child = hdkey.derive(path);
-const privateKey = child.privateKey;
-const publicKey = secp256k1.publicKeyCreate(privateKey, false);
-
-// 4. 주소 생성
-const hash = keccak256(publicKey.slice(1));
-const address = '0x' + Buffer.from(hash.slice(-20)).toString('hex');
-console.log('Address:', address);
-
-// 5. UTXO 조회
-async function sendTransaction() {
-    const utxoResponse = await fetch(`http://localhost:8000/api/v1/address/${address}/utxo`);
-    const utxoData = await utxoResponse.json();
-    const utxos = utxoData.data.utxos;
-    
-    if (utxos.length === 0) {
-        console.log('No UTXOs available');
-        return;
-    }
-    
-    const utxo = utxos[0];
-    const recipient = '0x9876543210fedcba9876543210fedcba98765432';
-    const amount = 1000;
-    
-    // 6. 트랜잭션 해시 생성
-    const txData = JSON.stringify({
-        txId: utxo.txId,
-        outputIndex: utxo.outputIndex,
-        to: recipient,
-        amount: amount
-    });
-    const txHash = Buffer.from(keccak256(txData), 'hex');
-    
-    // 7. 서명 생성
-    const signature = secp256k1.ecdsaSign(txHash, privateKey);
-    const signatureBytes = secp256k1.signatureExport(signature.signature);
-    
-    // 8. 서명된 트랜잭션 전송
-    const signedTx = {
-        inputs: [{
-            txId: utxo.txId,
-            outputIndex: utxo.outputIndex,
-            signature: '0x' + Buffer.from(signatureBytes).toString('hex'),
-            publicKey: '0x' + Buffer.from(publicKey).toString('hex')
-        }],
-        outputs: [{
-            to: recipient,
-            amount: amount
-        }, {
-            to: address,
-            amount: utxo.amount - amount - 100  // 잔액 - 수수료
-        }],
-        memo: 'Payment from JavaScript client',
-        data: null,
-        txType: 0
-    };
-    
-    const response = await fetch('http://localhost:8000/api/v1/tx/signed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(signedTx)
-    });
-    
-    const result = await response.json();
-    console.log('Response:', result);
-}
-
-sendTransaction();
-```
-
-### 3.4 브라우저 지갑 예제 (간단한 UI)
-
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <title>ABCFe Wallet</title>
-    <script src="https://cdn.jsdelivr.net/npm/bip39@3.0.4/dist/bip39.min.js"></script>
-</head>
-<body>
-    <h1>ABCFe Simple Wallet</h1>
-    
-    <div>
-        <h2>1. Create Wallet</h2>
-        <button onclick="createWallet()">Generate Mnemonic</button>
-        <p id="mnemonic"></p>
-        <p id="address"></p>
-    </div>
-    
-    <div>
-        <h2>2. Check Balance</h2>
-        <button onclick="checkBalance()">Check Balance</button>
-        <p id="balance"></p>
-    </div>
-    
-    <div>
-        <h2>3. Send Transaction</h2>
-        <input type="text" id="recipient" placeholder="Recipient address" />
-        <input type="number" id="amount" placeholder="Amount" />
-        <button onclick="sendTx()">Send</button>
-        <p id="result"></p>
-    </div>
-    
-    <script>
-        let privateKey, publicKey, myAddress;
-        
-        function createWallet() {
-            const mnemonic = bip39.generateMnemonic();
-            document.getElementById('mnemonic').textContent = 'Mnemonic: ' + mnemonic;
-            
-            // 여기서는 간단히 시드의 처음 32바이트를 개인키로 사용
-            // 실제로는 BIP-32/44 HD 키 유도 사용 권장
-            const seed = bip39.mnemonicToSeedSync(mnemonic);
-            privateKey = seed.slice(0, 32);
-            
-            // 주소 생성 (실제 구현 필요)
-            myAddress = '0x' + Array.from(privateKey.slice(0, 20))
-                .map(b => b.toString(16).padStart(2, '0')).join('');
-            
-            document.getElementById('address').textContent = 'Address: ' + myAddress;
-            
-            // 보안 주의: 니모닉을 안전하게 저장하세요!
-            localStorage.setItem('mnemonic', mnemonic);
-        }
-        
-        async function checkBalance() {
-            if (!myAddress) {
-                alert('Create wallet first!');
-                return;
-            }
-            
-            const response = await fetch(`http://localhost:8000/api/v1/address/${myAddress}/balance`);
-            const data = await response.json();
-            document.getElementById('balance').textContent = 
-                'Balance: ' + data.data.balance + ' coins';
-        }
-        
-        async function sendTx() {
-            if (!myAddress) {
-                alert('Create wallet first!');
-                return;
-            }
-            
-            const recipient = document.getElementById('recipient').value;
-            const amount = parseInt(document.getElementById('amount').value);
-            
-            // 실제로는 트랜잭션 서명 후 POST /api/v1/tx/signed로 전송
-            // 위의 JavaScript 예제 참고
-            
-            alert('서명 및 전송 로직 구현 필요 (위의 예제 참고)');
-        }
-    </script>
-</body>
-</html>
-```
-
-### 3.5 보안 주의사항
-
-⚠️ **중요**: 클라이언트 사이드 지갑 관리 시 주의사항
-
-1. **니모닉/개인키 보관**
-   - 절대 서버로 전송하지 마세요
-   - 브라우저 localStorage 사용 시 XSS 공격 주의
-   - 가능하면 암호화하여 저장
+1. **개인키 보호**
+   - 개인키는 절대 네트워크로 전송하지 않음
+   - 로컬 스토리지 암호화 저장
    - 하드웨어 지갑 사용 권장
 
 2. **HTTPS 사용**
@@ -494,7 +277,6 @@ sendTransaction();
    - 정기적인 보안 업데이트
 
 ---
-
 ## 4. 트랜잭션 전송
 
 ### 4.1 방법 1: 지갑을 통한 전송 (간편) - 노드 운영자용
@@ -768,7 +550,7 @@ curl -X POST http://localhost:8000/api/v1/wallet/account/new
 
 ## 6. WebSocket 실시간 알림
 
-> **📅 마지막 업데이트: 2025-12-21** - `vote_progress` 이벤트 추가, `node_state_update` 제거 (효율성 개선)
+> **📅 마지막 업데이트: 2025-12-27** - 5단계 컨센서스 상태 지원, 즉시 응답 기능
 
 WebSocket을 통해 블록체인 이벤트를 실시간으로 수신할 수 있습니다.
 
@@ -959,11 +741,11 @@ if __name__ == "__main__":
 
 ---
 
-## 8. 관리 스크립트
+## 7. 관리 스크립트
 
 ABCFe는 멀티 노드 환경을 쉽게 관리할 수 있는 스크립트를 제공합니다.
 
-### 8.1 전체 자동 셋업
+### 7.1 전체 자동 셋업
 
 ```bash
 # 한 번에 모든 것을 셋업 (가장 추천!)
@@ -978,7 +760,7 @@ ABCFe는 멀티 노드 환경을 쉽게 관리할 수 있는 스크립트를 제
 # 6. 상태 확인
 ```
 
-### 8.2 개별 스크립트
+### 7.2 개별 스크립트
 
 #### 지갑 생성
 ```bash
@@ -1033,7 +815,7 @@ ABCFe는 멀티 노드 환경을 쉽게 관리할 수 있는 스크립트를 제
 # DB 및 로그 삭제 (지갑은 유지)
 ```
 
-### 8.3 사용 시나리오
+### 7.3 사용 시나리오
 
 #### 처음 시작
 ```bash
@@ -1069,9 +851,9 @@ ABCFe는 멀티 노드 환경을 쉽게 관리할 수 있는 스크립트를 제
 
 ---
 
-## 7. 멀티 노드 환경
+## 8. 멀티 노드 환경
 
-### 7.1 두 번째 노드 설정
+### 8.1 두 번째 노드 설정
 
 `config/config_node2.toml` 파일을 생성하거나 수정:
 
@@ -1087,19 +869,20 @@ Path = "./resource/db2/leveldb_3001.db"
 Path = "./resource/wallet2"
 
 [Server]
-RestPort = 8001
+RestPort = 8001           # 공개 API
+InternalRestPort = 8801   # 내부 API (localhost만)
 
 [P2P]
 BootstrapNodes = ["localhost:3000"]
 ```
 
-### 7.2 두 번째 노드 실행
+### 8.2 두 번째 노드 실행
 
 ```bash
 ./abcfed --config config/config_node2.toml
 ```
 
-### 7.3 멀티 노드 테스트 스크립트
+### 8.3 멀티 노드 테스트 스크립트
 
 프로젝트에 포함된 `test_multi_node.sh` 스크립트를 사용:
 
@@ -1114,7 +897,7 @@ chmod +x test_multi_node.sh
 3. 트랜잭션 전송 테스트
 4. 양쪽 노드의 상태 비교
 
-### 7.4 노드 간 동기화 확인
+### 8.4 노드 간 동기화 확인
 
 **Node 1**:
 ```bash
@@ -1130,9 +913,9 @@ curl http://localhost:8001/api/v1/status
 
 ---
 
-## 8. 실전 시나리오
+## 9. 실전 시나리오
 
-### 8.1 시나리오: Genesis → User1 → User2 코인 전송
+### 9.1 시나리오: Genesis → User1 → User2 코인 전송
 
 #### Step 1: 노드 시작
 ```bash
@@ -1208,9 +991,9 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
 
 ---
 
-## 9. 문제 해결
+## 10. 문제 해결
 
-### 9.1 노드가 시작되지 않음
+### 10.1 노드가 시작되지 않음
 
 **증상**: `./abcfed` 실행 시 에러 발생
 
@@ -1229,7 +1012,7 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
    ls -la resource/db/
    ```
 
-### 9.2 트랜잭션이 실패함
+### 10.2 트랜잭션이 실패함
 
 **증상**: API 응답이 `"status": "error"`
 
@@ -1252,7 +1035,7 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
    tail -f log/syslogs/_$(date +%Y-%m-%d).log
    ```
 
-### 9.3 노드 간 동기화 안 됨
+### 10.3 노드 간 동기화 안 됨
 
 **증상**: 두 노드의 블록 높이가 다름
 
@@ -1261,7 +1044,7 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
 2. 두 노드 재시작
 3. 제네시스 블록 일치 여부 확인
 
-### 9.4 WebSocket 연결 실패
+### 10.4 WebSocket 연결 실패
 
 **증상**: `ws.onerror` 이벤트 발생
 
@@ -1272,7 +1055,7 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
 
 ---
 
-## 10. 추가 자료
+## 11. 추가 자료
 
 ### 문서
 - **[README.md](README.md)** - 프로젝트 개요
@@ -1290,9 +1073,11 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
 
 ---
 
-## 11. API 레퍼런스 요약
+## 12. API 레퍼런스 요약
 
 ### REST API
+
+**공개 API (포트 8000 - 외부 접근 가능):**
 
 | 메서드 | 엔드포인트 | 설명 |
 |--------|-----------|------|
@@ -1302,19 +1087,27 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
 | GET | `/api/v1/block/hash/{hash}` | 해시로 블록 조회 |
 | GET | `/api/v1/blocks` | 블록 목록 (페이지네이션) |
 | GET | `/api/v1/tx/{txId}` | 트랜잭션 조회 |
-| POST | `/api/v1/tx/send` | 지갑으로 트랜잭션 전송 |
 | POST | `/api/v1/tx/signed` | 서명된 트랜잭션 제출 |
 | GET | `/api/v1/address/{address}/balance` | 주소 잔액 조회 |
 | GET | `/api/v1/address/{address}/utxo` | UTXO 조회 |
 | GET | `/api/v1/mempool/list` | 멤풀 조회 |
 | GET | `/api/v1/consensus/status` | 컨센서스 상태 |
 | GET | `/api/v1/stats` | 네트워크 통계 |
-| GET | `/api/v1/wallet/accounts` | 지갑 계정 목록 |
-| POST | `/api/v1/wallet/account/new` | 새 계정 생성 |
 | GET | `/api/v1/p2p/peers` | P2P 피어 목록 |
 | GET | `/api/v1/p2p/status` | P2P 상태 |
 
-### WebSocket 이벤트 (📅 2025-12-21 업데이트)
+**내부 API (포트 8800 - localhost만 접근 가능):**
+
+| 메서드 | 엔드포인트 | 설명 |
+|--------|-----------|------|
+| POST | `/api/v1/tx/send` | 서버 지갑으로 트랜잭션 전송 ⚠️ |
+| GET | `/api/v1/wallet/accounts` | 지갑 계정 목록 ⚠️ |
+| POST | `/api/v1/wallet/account/new` | 새 계정 생성 ⚠️ |
+| POST | `/api/v1/block` | 테스트용 블록 생성 ⚠️ |
+
+> ⚠️ 내부 API는 `InternalRestPort` (기본 8800)에서만 접근 가능합니다.
+
+### WebSocket 이벤트 (📅 2025-12-27 업데이트)
 
 | 이벤트 | 설명 |
 |--------|------|
@@ -1323,6 +1116,80 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
 | `new_transaction` | 새 트랜잭션 추가 |
 | `consensus_state_change` | 컨센서스 상태 변경 (제안자 정보 포함) |
 | `vote_progress` | 투표 진행 상황 |
+
+---
+
+## 부록: 암호화 스펙 요약
+
+> **⚠️ 클라이언트 개발자는 반드시 이 스펙을 준수해야 합니다!**
+
+### 핵심 스펙
+
+| 항목 | 값 | 주의사항 |
+|------|-----|----------|
+| **타원 곡선** | P-256 (secp256r1/prime256v1) | ❌ secp256k1 사용 금지 |
+| **서명 알고리즘** | ECDSA + ASN.1 DER | ❌ raw (r\|\|s) 64바이트 사용 금지 |
+| **공개키 포맷** | PKIX/X.509 SubjectPublicKeyInfo (DER) | ❌ 단순 바이트 배열 사용 금지 |
+| **해시 함수** | SHA256 (TX ID 계산용) | JSON 직렬화 후 해시 |
+| **주소 생성** | Keccak256(압축공개키[1:])[-20:] | 마지막 20바이트 사용 |
+| **서명 대상** | TX ID 바이트 (32바이트) | ❌ 다시 해시하지 않음 |
+| **빈 서명 크기** | 72 바이트 | prt.Signature [72]byte |
+| **빈 해시 크기** | 32 바이트 | prt.Hash [32]byte |
+| **주소 크기** | 20 바이트 | prt.Address [20]byte |
+
+### Go 코드 참조
+
+```go
+// 1. 키 생성
+privateKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+
+// 2. 공개키 → PKIX 포맷
+publicKeyBytes, _ := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
+
+// 3. 공개키 → 주소
+compressed := elliptic.MarshalCompressed(curve, X, Y)
+hash := sha3.NewLegacyKeccak256()
+hash.Write(compressed[1:])  // prefix 제거
+address := hash.Sum(nil)[len-20:]
+
+// 4. TX ID 계산 (서명 없이)
+txJSON, _ := json.Marshal(tx)
+txID := sha256.Sum256(txJSON)
+
+// 5. 서명 (DER 포맷)
+signature, _ := ecdsa.SignASN1(rand.Reader, privateKey, txID[:])
+
+// 6. 서명 검증
+valid := ecdsa.VerifyASN1(publicKey, txID[:], signature)
+```
+
+### JSON 인코딩 규칙 (핵심!)
+
+| Go 타입 | JSON 인코딩 | 예시 |
+|---------|-------------|------|
+| `[]byte` (슬라이스) | **Base64 문자열** | `"MFkwEwYH..."` |
+| `[32]byte` | **숫자 배열** | `[0,0,0,...,0]` (32개) |
+| `[72]byte` | **숫자 배열** | `[0,0,0,...,0]` (72개) |
+| `[20]byte` | **숫자 배열** | `[152,118,84,...]` (20개) |
+
+**→ `publicKey`와 `data`는 Base64, 나머지 고정 배열은 숫자 배열!**
+
+### ⚠️ networkId 처리 (중요!)
+
+**현재 노드의 `/api/v1/tx/signed` 엔드포인트는 `networkId` 필드를 받지 않습니다!**
+
+- 클라이언트가 제출: `{ "version": "1.0.0", "timestamp": ..., ... }` (networkId 없음)
+- 노드가 내부적으로: `networkId: ""`로 설정하여 TX ID 계산
+- 클라이언트도 TX ID 계산 시: **`networkId: ""`** 사용해야 함
+
+### 자주 발생하는 오류
+
+| 오류 메시지 | 원인 | 해결 |
+|-------------|------|------|
+| `failed to parse public key` | 잘못된 공개키 포맷 또는 곡선 | P-256 + PKIX 사용 |
+| `invalid signature` | 잘못된 서명 포맷 또는 데이터 | DER 포맷 + TX ID 직접 서명 |
+| `tx hash mismatch` | TX ID 계산 불일치 | **publicKey를 Base64로, 나머지는 숫자 배열로** |
+| `signature too long` | 서명 > 72바이트 | DER 인코딩 확인 |
 
 ---
 

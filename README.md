@@ -1,6 +1,8 @@
 # ABCFe Blockchain Node
 
-ABCFe는 UTXO 기반의 블록체인 노드 구현입니다. PoS 컨센서스, P2P 네트워크, REST API를 제공하며, 멀티 노드 환경을 지원합니다.
+> **📅 마지막 업데이트: 2025-12-27**
+
+ABCFe는 UTXO 기반의 블록체인 노드 구현입니다. **PoA/BFT 컨센서스**, P2P 네트워크, REST API를 제공하며, 멀티 노드 환경을 지원합니다.
 
 ## 빠른 시작
 
@@ -49,25 +51,28 @@ make build
 
 ### 블록체인 코어
 - ✅ **UTXO 모델** - 트랜잭션 입출력 기반
-- ✅ **블록 생성** - 3초마다 자동 생성
+- ✅ **블록 생성** - 1초마다 자동 생성
 - ✅ **블록 검증** - 해시, 높이, 타임스탬프, 머클 루트
 - ✅ **트랜잭션 풀** - Mempool 관리
 
 ### 컨센서스
-- ✅ **PoS (Proof of Stake)** - 스테이킹 기반
-- ✅ **검증자 관리** - 가중 랜덤 선출
-- ✅ **블록 제안** - 제안자 선출 및 블록 생성
+- ✅ **PoA/BFT (Proof of Authority with BFT)** - 5단계 상태 머신
+- ✅ **검증자 관리** - RoundRobin / VRF / Hybrid 제안자 선출
+- ✅ **블록 제안** - 1초 블록 생성 간격
+- ✅ **2-phase 투표** - Prevote + Precommit (2/3 다수결)
 
 ### P2P 네트워크
 - ✅ **멀티 노드 지원** - 자동 블록 동기화
 - ✅ **피어 관리** - 핸드셰이크 프로토콜
-- ✅ **실시간 브로드캐스트** - 블록/트랜잭션 전파
+- ✅ **실시간 브로드캐스트** - 블록/트랜잭션/투표 전파
 - ✅ **높이 기반 동기화** - 최대 100개 블록씩 전송
+- ✅ **레이트 제한** - DoS 방지
 
 ### API & WebSocket
 - ✅ **REST API** - 블록, 트랜잭션, 주소 조회
-- ✅ **WebSocket** - 실시간 이벤트 알림
+- ✅ **WebSocket** - 실시간 이벤트 알림 (즉시 응답 지원)
 - ✅ **CORS 지원** - 크로스 도메인 요청
+- ✅ **컨센서스 상태 이벤트** - consensus_state_change
 
 ### 지갑
 - ✅ **HD 지갑** - BIP-39, BIP-44 표준
@@ -150,7 +155,8 @@ const ws = new WebSocket('ws://localhost:8000/ws');
 
 ws.onmessage = (event) => {
   const data = JSON.parse(event.data);
-  console.log(data.type); // newBlock, newTransaction, chainSync
+  // 이벤트: new_block, new_transaction, consensus_state_change
+  console.log(data.event, data.data);
 };
 ```
 
@@ -185,7 +191,7 @@ ws.onmessage = (event) => {
 │                                                     │
 │ ┌─────────────────────────────────────────┐       │
 │ │         Consensus Engine                │       │
-│ │  (PoS, Proposer, Validator)            │       │
+│ │  (PoA/BFT, Proposer, Validator)            │       │
 │ └─────────────────────────────────────────┘       │
 │                                                     │
 │ ┌─────────────────────────────────────────┐       │
@@ -207,7 +213,7 @@ abcfe-node/
 ├── cmd/node/          # 메인 애플리케이션
 ├── app/               # 앱 통합 레이어
 ├── core/              # 블록체인 코어
-├── consensus/         # PoS 컨센서스
+├── consensus/         # PoA/BFT 컨센서스
 ├── p2p/               # P2P 네트워크
 ├── api/rest/          # REST API & WebSocket
 ├── wallet/            # HD 지갑
@@ -261,12 +267,14 @@ tail -f /tmp/abcfed_node1.log
 
 **Node 1 (Boot/Producer)**
 - P2P 포트: 30303
-- REST 포트: 8000
+- 공개 REST 포트: 8000 (외부 접근 가능)
+- 내부 REST 포트: 8800 (localhost만)
 - 역할: 제네시스 블록 생성, 블록 생성, 부트스트랩
 
 **Node 2-N (Validator/Sync)**
 - P2P 포트: 30304, 30305, ...
-- REST 포트: 8001, 8002, ...
+- 공개 REST 포트: 8001, 8002, ...
+- 내부 REST 포트: 8801, 8802, ...
 - 역할: 블록 동기화, 검증
 - Boot 노드: 127.0.0.1:30303
 
@@ -323,7 +331,8 @@ Block {
 
 ### 포트 사용
 - P2P: 30303, 30304, 30305, ...
-- REST: 8000, 8001, 8002, ...
+- 공개 REST: 8000, 8001, 8002, ... (조회 API)
+- 내부 REST: 8800, 8801, 8802, ... (지갑/TX 전송 API, localhost만)
 
 포트가 이미 사용 중이면 노드가 시작되지 않습니다.
 

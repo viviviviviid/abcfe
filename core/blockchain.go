@@ -175,6 +175,14 @@ func (p *BlockChain) SetProposerValidator(validator ProposerValidator) {
 	p.proposerValidator = validator
 }
 
+// GetNetworkID returns network ID from config
+func (p *BlockChain) GetNetworkID() string {
+	if p == nil || p.cfg == nil {
+		return ""
+	}
+	return p.cfg.Common.NetworkID
+}
+
 // GetProposerValidator returns PoA verification interface
 func (p *BlockChain) GetProposerValidator() ProposerValidator {
 	return p.proposerValidator

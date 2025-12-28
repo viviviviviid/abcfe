@@ -479,8 +479,8 @@ func SubmitSignedTx(bc *core.BlockChain, p2pService *p2p.P2PService) http.Handle
 			return
 		}
 
-		// Convert request to core.Transaction
-		tx, err := convertSignedTxReqToTx(&req)
+		// Convert request to core.Transaction (use node's networkId)
+		tx, err := convertSignedTxReqToTx(&req, bc.GetNetworkID())
 		if err != nil {
 			sendResp(w, http.StatusBadRequest, nil, err)
 			return
@@ -632,7 +632,7 @@ func CreateNewAccount(wm *wallet.WalletManager) http.HandlerFunc {
 }
 
 // convertSignedTxReqToTx converts request to Transaction
-func convertSignedTxReqToTx(req *SubmitSignedTxReq) (*core.Transaction, error) {
+func convertSignedTxReqToTx(req *SubmitSignedTxReq, networkID string) (*core.Transaction, error) {
 	// Parse signatures and public keys first (for later use)
 	signatures := make([]prt.Signature, len(req.Inputs))
 	publicKeys := make([][]byte, len(req.Inputs))
@@ -683,6 +683,7 @@ func convertSignedTxReqToTx(req *SubmitSignedTxReq) (*core.Transaction, error) {
 
 	tx := &core.Transaction{
 		Version:   req.Version,
+		NetworkID: networkID,
 		Timestamp: req.Timestamp,
 		Inputs:    inputs,
 		Outputs:   outputs,

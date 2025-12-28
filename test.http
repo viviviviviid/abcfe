@@ -14,7 +14,7 @@ GET http://localhost:8001/api/v1/status
 GET http://localhost:8000/api/v1/blocks
 
 ### 포트 8000
-GET http://localhost:8001/api/v1/block/height/545
+GET http://localhost:8001/api/v1/block/height/143
 
 ### 블록 해시로 조회
 GET http://localhost:8000/api/v1/block/hash/9fb357de59ad40056d8136af1e8eef2d38fcf2bdb596d184fb5dd162bf2e6142
@@ -26,13 +26,13 @@ GET http://localhost:8000/api/v1/blocks?page=1&limit=10
 GET http://localhost:8000/api/v1/tx/8a6db9670051c4072ef51dc153d6f41a39879e169fe55186cb733d4237552de0
 
 ### 주소 잔액 조회
-GET http://localhost:8000/api/v1/address/90efb3f6337ff1cc31398426ef62e4f48d9d73e6/balance
+GET http://localhost:8000/api/v1/address/eb7182f0d3a7402cb455d9ce632ab5e1a7eba80d/balance
 
 ### 주소 UTXO 조회
-GET http://localhost:8000/api/v1/address/90efb3f6337ff1cc31398426ef62e4f48d9d73e6/utxo
+GET http://localhost:8000/api/v1/address/1137bb349b1179bd0f2a3062e6317509c491ded4/utxo
 
 ### 주소 트랜잭션 히스토리 조회 (전체)
-GET http://localhost:8000/api/v1/address/90efb3f6337ff1cc31398426ef62e4f48d9d73e6/txs
+GET http://localhost:8000/api/v1/address/eb7182f0d3a7402cb455d9ce632ab5e1a7eba80d/txs
 
 ### 멤풀 조회
 GET http://localhost:8000/api/v1/mempool/list
@@ -54,3 +54,61 @@ POST http://localhost:8000/api/v1/wallet/account/new
 
 ### 지갑 계정 목록 조회 - 새 계정 생성 통해 만든 계정
 GET http://localhost:8000/api/v1/wallet/accounts
+
+###############################################
+# 💰 트랜잭션 전송 (코인 보내기)
+###############################################
+
+### 코인 전송 - Node 1 지갑에서 특정 주소로 1000 코인 전송
+# accountIndex: 지갑 내 계정 인덱스 (0번이 기본)
+# to: 수신자 주소 (40자리 hex, 0x 없이)
+# amount: 전송할 코인 수량
+# fee: 수수료 (0이면 최소 수수료 자동 적용)
+# memo: 메모 (선택)
+POST http://localhost:8000/api/v1/tx/send
+Content-Type: application/json
+
+{
+  "accountIndex": 0,
+  "to": "1137bb349b1179bd0f2a3062e6317509c491ded4",
+  "amount": 100000000,
+  "fee": 0,
+  "memo": "Genesis to ABCFE Server Account"
+}
+
+### 코인 전송 - Node 2 지갑에서 전송
+POST http://localhost:8001/api/v1/tx/send
+Content-Type: application/json
+
+{
+  "accountIndex": 0,
+  "to": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "amount": 500,
+  "fee": 0,
+  "memo": "Node 2에서 전송"
+}
+
+### 코인 전송 - 큰 금액 (10만 코인)
+POST http://localhost:8000/api/v1/tx/send
+Content-Type: application/json
+
+{
+  "accountIndex": 0,
+  "to": "cccccccccccccccccccccccccccccccccccccccc",
+  "amount": 100000,
+  "fee": 10,
+  "memo": "대량 전송 테스트"
+}
+
+###############################################
+# 🔍 전송 후 확인
+###############################################
+
+### 전송 후 - 수신자 잔액 확인
+GET http://localhost:8000/api/v1/address/1137bb349b1179bd0f2a3062e6317509c491ded4/balance
+
+### 전송 후 - 수신자 UTXO 확인
+GET http://localhost:8000/api/v1/address/1137bb349b1179bd0f2a3062e6317509c491ded4/utxo
+
+### 전송 후 - 멤풀 확인 (트랜잭션이 블록에 포함되기 전)
+GET http://localhost:8000/api/v1/mempool/list

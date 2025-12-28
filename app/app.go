@@ -115,7 +115,18 @@ func New(configPath string) (*App, error) {
 	}
 
 	// Initialize REST API server
-	app.restServer = rest.NewServer(app.Conf.Server.RestPort, app.BlockChain, app.Wallet, app.Consensus)
+	// InternalRestPort가 설정되면 공개/내부 서버 분리 모드로 실행
+	if app.Conf.Server.InternalRestPort > 0 {
+		app.restServer = rest.NewServerWithInternalPort(
+			app.Conf.Server.RestPort,
+			app.Conf.Server.InternalRestPort,
+			app.BlockChain,
+			app.Wallet,
+			app.Consensus,
+		)
+	} else {
+		app.restServer = rest.NewServer(app.Conf.Server.RestPort, app.BlockChain, app.Wallet, app.Consensus)
+	}
 
 	// Set P2P service in REST server
 	app.restServer.SetP2P(app.P2PService)

@@ -47,7 +47,19 @@
       "Bash(./start_poa.sh:*)",
       "Bash(timeout 20 websocat:*)",
       "Bash(timeout 25 websocat:*)",
-      "Bash(./check_nodes.sh:*)"
+      "Bash(./check_nodes.sh:*)",
+      "Bash(git -C /Users/viviviviviid/go/src/github.com/abcfe/abcfe-node-newest log --oneline -20)",
+      "Bash(wc:*)",
+      "Bash(git -C /Users/viviviviviid/go/src/github.com/abcfe/abcfe-node-newest log -5 --format=\"%h %ai %s\" --follow consensus/consensus.go)",
+      "Bash(git -C /Users/viviviviviid/go/src/github.com/abcfe/abcfe-node-newest show 06e48a2:consensus/consensus.go)",
+      "Bash(git -C /Users/viviviviviid/go/src/github.com/abcfe/abcfe-node-newest diff 3dff097 06e48a2 -- consensus/consensus.go)",
+      "Bash(git -C /Users/viviviviviid/go/src/github.com/abcfe/abcfe-node-newest show:*)",
+      "Bash(git -C /Users/viviviviviid/go/src/github.com/abcfe/abcfe-node-newest log -1 --format=\"%ai\" -- core/transaction.go)",
+      "Bash(git -C /Users/viviviviviid/go/src/github.com/abcfe/abcfe-node-newest log -3 --oneline -- core/transaction.go)",
+      "Bash(git -C /Users/viviviviviid/go/src/github.com/abcfe/abcfe-node-newest diff HEAD~5 HEAD --name-only)",
+      "Bash(mv:*)",
+      "Bash(for:*)",
+      "Bash(do echo \"=== Port $port ===\" curl -s \"http://localhost:$port/api/v1/status\")"
     ],
     "deny": [],
     "ask": []

@@ -1,5 +1,7 @@
 # 🚀 ABCFe 멀티 노드 빠른 시작 가이드
 
+> **📅 마지막 업데이트: 2025-12-27**
+
 ## ⚡ 1분 시작 (자동)
 
 ```bash
@@ -58,8 +60,8 @@ make build
 
 ### 로그 확인
 ```bash
-tail -f ./log/syslog/_2025-12-12.log
-tail -f ./log/syslog2/_2025-12-12.log
+tail -f ./log/syslogs/_$(date +%Y-%m-%d).log
+tail -f ./log/syslogs2/_$(date +%Y-%m-%d).log
 ```
 
 ### 완전 초기화
@@ -72,10 +74,15 @@ tail -f ./log/syslog2/_2025-12-12.log
 
 ## 📊 접속 정보
 
-### REST API
+### 공개 REST API (조회 전용)
 - **Node 1**: http://localhost:8000/api/v1/status
 - **Node 2**: http://localhost:8001/api/v1/status
 - **Node 3**: http://localhost:8002/api/v1/status
+
+### 내부 REST API (지갑/TX 전송, localhost만)
+- **Node 1**: http://localhost:8800/api/v1/wallet/accounts
+- **Node 2**: http://localhost:8801/api/v1/wallet/accounts
+- **Node 3**: http://localhost:8802/api/v1/wallet/accounts
 
 ### WebSocket
 - **Node 1**: ws://localhost:8000/ws
@@ -115,7 +122,7 @@ tail -f ./log/syslog2/_2025-12-12.log
 ## 📚 상세 문서
 
 - **`README_SCRIPTS.md`** - 스크립트 상세 가이드
-- **`README_MULTINODE.md`** - 멀티 노드 상세 설명
+- **`CLAUDE.md`** - 개발자/아키텍처 가이드
 - **`USER_GUIDE.md`** - 전체 사용자 가이드
 
 ---
@@ -124,7 +131,7 @@ tail -f ./log/syslog2/_2025-12-12.log
 
 1. **지갑 백업**: `./resource/wallet*/` 디렉토리를 주기적으로 백업하세요
 2. **제네시스 블록**: 모든 노드가 동일한 제네시스 블록을 가져야 합니다
-3. **포트 충돌**: 8000-800X, 30303-3030X 포트가 사용 가능해야 합니다
+3. **포트 충돌**: 8000-800X (공개), 8800-880X (내부), 30303-3030X (P2P) 포트가 사용 가능해야 합니다
 
 ---
 

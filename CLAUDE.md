@@ -1,5 +1,7 @@
 # ABCFe Node - AI Assistant & Developer Guide
 
+> **📅 마지막 업데이트: 2025-12-28**
+
 이 문서는 ABCFe 블록체인 노드 프로젝트에 대한 AI 어시스턴트 및 개발자용 가이드입니다.
 
 ## 🚀 빠른 시작
@@ -41,22 +43,27 @@ abcfe-node/
 │   ├── utxo.go        # UTXO 모델
 │   ├── mempool.go     # 트랜잭션 풀
 │   └── validate.go    # 검증 로직
-├── consensus/         # PoA 컨센서스
-│   ├── consensus.go   # 컨센서스 상태 + ProposerValidator 구현
-│   ├── engine.go      # 컨센서스 엔진 (블록 생성 + 서명)
+├── consensus/         # PoA/BFT 컨센서스
+│   ├── consensus.go   # 컨센서스 상태 (5단계) + ProposerValidator 구현
+│   ├── engine.go      # 컨센서스 엔진 (블록 생성 + BFT 투표)
 │   ├── proposer.go    # 제안자 서명 생성
-│   ├── selection.go   # 제안자 선출 (라운드 로빈)
-│   └── validator.go   # 검증자 관리 + 서명 검증
+│   ├── selection.go   # 제안자 선출 (RoundRobin/VRF/Hybrid)
+│   ├── validator.go   # 검증자 관리 + 서명 검증
+│   ├── staking.go     # 스테이킹 관리
+│   └── type.go        # 타입 정의
 ├── p2p/               # P2P 네트워크
 │   ├── p2p.go         # P2P 서비스
 │   ├── node.go        # 노드 및 피어 관리
-│   └── message.go     # 메시지 프로토콜
-├── api/rest/          # REST API & WebSocket
-│   ├── server.go      # HTTP 서버
-│   ├── handler.go     # API 핸들러 (700+ lines)
-│   ├── routes.go      # 라우팅
-│   ├── middleware.go  # CORS, 로깅
-│   └── websocket.go   # WebSocket 핸들러
+│   ├── message.go     # 메시지 프로토콜
+│   └── ratelimit.go   # P2P 레이트 제한
+├── api/               # REST API & WebSocket
+│   ├── rest/          # REST API
+│   │   ├── server.go      # HTTP 서버
+│   │   ├── handler.go     # API 핸들러 (940+ lines)
+│   │   ├── routes.go      # 라우팅
+│   │   ├── types.go       # 응답 타입 정의
+│   │   └── middleware.go  # CORS, 로깅
+│   └── websocket.go   # WebSocket 핸들러 (즉시 응답 지원)
 ├── wallet/            # HD 지갑 (BIP-39, BIP-44)
 │   ├── wallet.go      # 지갑 관리
 │   ├── keystore.go    # 키스토어
@@ -95,13 +102,23 @@ type BlockChain struct {
 - RWMutex로 동시 읽기/쓰기 보호
 
 #### 3. Consensus (consensus/)
-- **PoA (Proof of Authority)** 기반
-- 3초마다 새 블록 생성
-- 제안자 선출: **라운드 로빈** (`height % len(validators)`)
+- **PoA/BFT (Proof of Authority with BFT voting)** 기반
+- **1초마다** 새 블록 생성 (BlockIntervalMs = 1000)
+- 제안자 선출: **RoundRobin / VRF / Hybrid** (설정 가능)
 - 검증자: config 파일에서 고정 로드
 - 블록에 **제안자 주소 + 서명** 포함
+- **5단계 컨센서스 상태 머신**
 
 ```go
+// 컨센서스 상태 (5단계)
+const (
+    StateIdle         = "IDLE"         // 대기
+    StateProposing    = "PROPOSING"    // 블록 제안
+    StatePrevoting    = "PREVOTING"    // 1차 투표 (Prevote)
+    StatePrecommitting= "PRECOMMITTING"// 2차 투표 (Precommit)
+    StateCommitting   = "COMMITTING"   // 블록 확정
+)
+
 // 블록 구조 (PoA 정보 포함)
 type Block struct {
     Header       BlockHeader
@@ -110,15 +127,33 @@ type Block struct {
     Signature    Signature  // 제안자의 블록 해시 서명
 }
 
-// 블록 생성 주기
-ticker := time.NewTicker(3 * time.Second)
+// 타이밍 상수
+BlockProduceTimeMs = 1000   // 블록 생성 체크 간격
+BlockIntervalMs    = 1000   // 블록 간 최소 간격
+RoundTimeoutMs     = 20000  // 라운드 타임아웃
 ```
 
-**PoA 검증 흐름:**
+**제안자 선택 알고리즘:**
+```go
+// 1. Round-Robin (기본)
+SelectProposer(height, round) // (height + round) % len(validators)
+
+// 2. VRF 기반 (예측 불가능)
+SelectProposerVRF(height, round, prevBlockHash) // hash(prevBlockHash + height + round)
+
+// 3. Hybrid (VRF + Round-Robin)
+SelectProposerHybrid(height, round, prevBlockHash)
+// - Round 0: VRF 기반 선택
+// - Round 1+: Round-Robin fallback (liveness 보장)
 ```
-1. 제안자 주소가 비어있지 않은지 확인
-2. 제안자가 해당 높이의 예상 제안자인지 확인 (라운드 로빈)
-3. 제안자의 서명이 유효한지 확인 (공개키로 검증)
+
+**BFT 컨센서스 흐름:**
+```
+1. Proposing: 제안자가 블록 생성 및 브로드캐스트
+2. Prevoting: 검증자들이 1차 투표 (2/3 이상 필요)
+3. Precommitting: 검증자들이 2차 투표 (2/3 이상 필요)
+4. Committing: 블록 확정 및 체인에 추가
+5. Idle: 다음 라운드 대기
 ```
 
 #### 4. P2P Network (p2p/)
@@ -127,19 +162,44 @@ ticker := time.NewTicker(3 * time.Second)
 - 블록/트랜잭션 브로드캐스트
 - **자동 블록 동기화** (높이 기반)
 - 10MB 버퍼 (대용량 메시지 지원)
+- **레이트 제한** (DoS 방지)
 
 **메시지 타입:**
 ```go
+// 기본 메시지
 MsgTypeHandshake     // 핸드셰이크
 MsgTypeHandshakeAck  // ACK
 MsgTypeNewBlock      // 새 블록 알림
 MsgTypeGetBlocks     // 블록 범위 요청
 MsgTypeBlocks        // 블록 응답 (최대 100개)
 MsgTypeNewTx         // 새 트랜잭션
+
+// BFT 컨센서스 메시지
+MsgTypeProposal      // 블록 제안
+MsgTypeVote          // 투표 (Prevote/Precommit)
+```
+
+**레이트 제한 설정 (ratelimit.go):**
+```go
+MaxMessagesPerSecond: 100
+BurstSize: 200
+MaxBlocksPerSecond: 5
+MaxTxPerSecond: 50
+MaxProposalsPerSecond: 10
+MaxVotesPerSecond: 50
+BanDuration: 60 seconds
 ```
 
 #### 5. REST API (api/rest/)
-**주요 엔드포인트:**
+
+**포트 분리 (보안):**
+```toml
+[server]
+RestPort = 8000           # 공개 API (0.0.0.0 - 외부 접근 가능)
+InternalRestPort = 8800   # 내부 API (127.0.0.1 - localhost만 접근)
+```
+
+**공개 API (포트 8000) - 조회 전용:**
 ```
 GET  /api/v1/status                      # 노드 상태
 GET  /api/v1/blocks                      # 블록 목록 (페이징)
@@ -147,15 +207,48 @@ GET  /api/v1/block/height/{height}       # 높이로 블록 조회
 GET  /api/v1/block/hash/{hash}           # 해시로 블록 조회
 GET  /api/v1/address/{address}/balance   # 주소 잔액
 GET  /api/v1/address/{address}/utxo      # 주소 UTXO
-POST /api/v1/transaction                 # 트랜잭션 전송
-GET  /api/v1/mempool                     # 멤풀 상태
+POST /api/v1/tx/signed                   # 클라이언트 서명 TX 제출
+GET  /api/v1/mempool/list                # 멤풀 상태
 GET  /api/v1/consensus/status            # 컨센서스 상태
+```
+
+**내부 API (포트 8800) - localhost 전용:**
+```
+# 공개 API 모두 포함 +
+POST /api/v1/tx/send                     # 서버 지갑으로 TX 전송 (내부 전용)
+GET  /api/v1/wallet/accounts             # 지갑 계정 목록 (내부 전용)
+POST /api/v1/wallet/account/new          # 새 계정 생성 (내부 전용)
+POST /api/v1/block                       # 테스트용 블록 생성 (내부 전용)
 ```
 
 **WebSocket:**
 ```
 ws://localhost:8000/ws
-이벤트: newBlock, newTransaction, chainSync
+이벤트: new_block, new_transaction, block_confirmed, consensus_state_change
+```
+
+**WebSocket 즉시 응답:** 연결 시 현재 컨센서스 상태와 최신 블록을 즉시 전송
+
+**⚠️ 클라이언트 TX 서명 (POST /api/v1/tx/signed):**
+```
+1. SubmitSignedTxReq는 networkId 필드를 받지 않음!
+2. 노드가 내부적으로 networkId: "" 로 TX ID 계산
+3. 클라이언트도 동일하게 networkId: "" 사용해야 함
+
+JSON 인코딩 규칙:
+- []byte (publicKey, data): Base64 문자열
+- [32]byte (id, txId): 숫자 배열 [0,0,0,...]
+- [72]byte (signature): 숫자 배열 [0,0,0,...]
+- [20]byte (address): 숫자 배열 [152,118,...]
+
+TX ID 계산용 JSON 필드 순서 (Go 구조체 순서):
+version → networkId → id → timestamp → inputs → outputs → memo → data
+
+Input 필드 순서:
+txId → outputIndex → signature → publicKey
+
+Output 필드 순서:
+address → amount → txType
 ```
 
 #### 6. Wallet (wallet/)
@@ -197,13 +290,13 @@ tx:<txid>                 -> 트랜잭션
 
 ## 🔄 핵심 플로우
 
-### 블록 생성 플로우 (PoA)
+### 블록 생성 플로우 (PoA/BFT)
 ```
-1. Consensus Engine (3초 타이머)
+1. Consensus Engine (1초 타이머)
    ↓
-2. 라운드 로빈으로 제안자 선택 (height % validators)
+2. 제안자 선택 (RoundRobin/VRF/Hybrid)
    ↓
-3. 내가 제안자인 경우에만 블록 생성
+3. [PROPOSING] 내가 제안자인 경우 블록 생성
    ↓
 4. Mempool에서 트랜잭션 선택
    ↓
@@ -215,13 +308,19 @@ tx:<txid>                 -> 트랜잭션
    ↓
 8. 제안자 주소 설정 + 블록 해시에 서명
    ↓
-9. 블록 검증 (제안자/서명 포함)
+9. P2P로 Proposal 브로드캐스트
    ↓
-10. BlockChain에 추가 (DB 저장)
+10. [PREVOTING] 검증자들이 블록 검증 후 1차 투표
    ↓
-11. P2P 브로드캐스트
+11. [PRECOMMITTING] 2/3 이상 Prevote 시 2차 투표
    ↓
-12. WebSocket 알림
+12. [COMMITTING] 2/3 이상 Precommit 시 블록 확정
+   ↓
+13. BlockChain에 추가 (DB 저장)
+   ↓
+14. WebSocket으로 new_block 이벤트 알림
+   ↓
+15. [IDLE] 다음 블록 대기
 ```
 
 ### P2P 동기화 플로우
@@ -313,14 +412,16 @@ logger.Error("에러: ", err)
   - Mode: `boot`
   - BlockProducer: `true`
   - P2P Port: `30303`
-  - REST Port: `8000`
+  - Public REST Port: `8000` (외부 접근 가능)
+  - Internal REST Port: `8800` (localhost만)
   - 역할: 제네시스 블록 생성, 블록 생성, 부트스트랩
 
 - **Node 2-N** (Validator/Sync-only)
   - Mode: `validator`
   - BlockProducer: `false`
   - P2P Port: `30304`, `30305`, ...
-  - REST Port: `8001`, `8002`, ...
+  - Public REST Port: `8001`, `8002`, ...
+  - Internal REST Port: `8801`, `8802`, ...
   - BootNodes: `["127.0.0.1:30303"]`
   - 역할: 블록 동기화, 검증
 
@@ -463,7 +564,7 @@ curl http://localhost:8001/api/v1/status
 - `start_multi_nodes.sh` - 노드 시작
 - `check_nodes.sh` - 상태 확인
 
-## 🔐 PoA 컨센서스 구현 현황
+## 🔐 PoA/BFT 컨센서스 구현 현황
 
 ### ✅ 완료된 항목
 | 항목 | 파일 | 설명 |
@@ -474,30 +575,42 @@ curl http://localhost:8001/api/v1/status
 | ProposerValidator 인터페이스 | `core/blockchain.go` | 순환 참조 없이 검증 분리 |
 | Consensus 인터페이스 구현 | `consensus/consensus.go` | `ValidateProposerSignature()`, `IsValidProposer()` |
 | API 응답 컨센서스 정보 | `api/rest/handler.go` | `proposer`, `signature` 필드 |
-| 라운드 로빈 제안자 선택 | `consensus/selection.go` | `height % len(validators)` |
+| 제안자 선택 알고리즘 | `consensus/selection.go` | RoundRobin, VRF, Hybrid 지원 |
 | P2P 블록 동기화 + 검증 | `app/app.go` | 블록 수신 시 PoA 검증 |
+| **5단계 컨센서스 상태** | `consensus/consensus.go` | Idle→Proposing→Prevoting→Precommitting→Committing |
+| **BFT 투표 메시지** | `p2p/message.go` | MsgTypeProposal, MsgTypeVote |
+| **P2P 레이트 제한** | `p2p/ratelimit.go` | DoS 방지 |
+| **WebSocket 즉시 응답** | `api/websocket.go` | 연결 시 현재 상태 전송 |
+| **투표 서명 검증** | `consensus/validator.go` | Prevote/Precommit 서명 검증 |
 
 ### ❌ 미구현 항목
 | 항목 | 설명 | 우선순위 |
 |------|------|----------|
-| 멀티 검증자 서명 (BFT) | 2/3 검증자 서명 수집 | 낮음 |
 | 검증자 동적 추가/제거 | 현재 config 고정 | 중간 |
 | 슬래싱 메커니즘 | 제안자 미이행 패널티 | 중간 |
 | 에포크 기반 검증자 교체 | 주기적 업데이트 | 낮음 |
 
 ### 주요 코드 위치
 ```go
+// 컨센서스 상태 (consensus/consensus.go)
+const (
+    StateIdle         = "IDLE"
+    StateProposing    = "PROPOSING"
+    StatePrevoting    = "PREVOTING"
+    StatePrecommitting= "PRECOMMITTING"
+    StateCommitting   = "COMMITTING"
+)
+
+// 제안자 선택 (consensus/selection.go)
+SelectProposer(height, round)        // Round-Robin
+SelectProposerVRF(height, round, prevBlockHash)   // VRF 기반
+SelectProposerHybrid(height, round, prevBlockHash) // Hybrid
+
 // 블록 생성 + 서명 (consensus/engine.go)
 func (e *ConsensusEngine) proposeBlock() {
     newBlock := e.blockchain.SetBlock(prevHash, height, proposerAddr)
     sig, _ := e.consensus.LocalProposer.signBlockHash(newBlock.Header.Hash)
     newBlock.SignBlock(sig)
-}
-
-// 제안자 검증 (consensus/consensus.go)
-func (c *Consensus) IsValidProposer(proposer, height) bool {
-    expectedProposer := c.Selector.SelectProposer(height, 0)
-    return expectedProposer.Address == proposer
 }
 
 // 서명 검증 (consensus/validator.go)
@@ -516,6 +629,21 @@ func (v *Validator) ValidateBlockSignature(blockHash, sig) bool {
 6. **에러 처리**: 모든 에러는 로그 출력 후 처리
 7. **블록 해시**: Header만으로 계산 (JSON 직렬화)
 8. **PoA 검증**: `ProposerValidator` 인터페이스로 순환 참조 방지
+9. **블록 생성 간격**: 1초 (BlockIntervalMs = 1000)
+10. **제안자 선택**: Hybrid 모드 권장 (VRF + Round-Robin)
+
+---
+
+## 📚 추가 문서
+
+프로젝트 내 `docs/` 폴더에 상세 문서가 있습니다:
+
+- `docs/consensus/bft-consensus.md` - BFT 컨센서스 상세
+- `docs/consensus/proposer-selection.md` - 제안자 선택 알고리즘
+- `docs/consensus/state-machine.md` - 상태 머신
+- `docs/consensus/timeout-recovery.md` - 타임아웃 복구
+- `docs/api/websocket-api.md` - WebSocket API
+- `docs/frontend/node-visualization.md` - 노드 시각화 가이드
 
 ---
 

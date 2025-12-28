@@ -59,7 +59,8 @@ type Validators struct {
 }
 
 type Server struct {
-	RestPort int `toml:"RestPort"`
+	RestPort         int `toml:"RestPort"`         // 공개 API 포트 (0.0.0.0 바인딩)
+	InternalRestPort int `toml:"InternalRestPort"` // 내부 API 포트 (127.0.0.1 바인딩, 0이면 비활성화)
 }
 
 type P2P struct {

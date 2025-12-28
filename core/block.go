@@ -49,11 +49,30 @@ func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Add
 	var invalidTxIds []prt.Hash
 	var totalFees uint64 = 0
 
+	// Track UTXOs used in this block to prevent double-spending
+	usedUTXOs := make(map[string]bool)
+
 	for _, tx := range candidateTxs {
 		if err := p.ValidateTransaction(tx); err != nil {
 			// Invalid transactions will be removed from mempool
 			logger.Warn("[SetBlock] TX validation failed: ", utils.HashToString(tx.ID)[:16], " error: ", err)
 			invalidTxIds = append(invalidTxIds, tx.ID)
+			continue
+		}
+
+		// Check for duplicate UTXO usage within this block
+		hasDoubleSpend := false
+		for _, input := range tx.Inputs {
+			utxoKey := fmt.Sprintf("%s:%d", utils.HashToString(input.TxID), input.OutputIndex)
+			if usedUTXOs[utxoKey] {
+				// This TX uses a UTXO already claimed by another TX in this block
+				logger.Warn("[SetBlock] Double-spend detected, removing TX: ", utils.HashToString(tx.ID)[:16], " UTXO: ", utxoKey)
+				invalidTxIds = append(invalidTxIds, tx.ID)
+				hasDoubleSpend = true
+				break
+			}
+		}
+		if hasDoubleSpend {
 			continue
 		}
 
@@ -63,6 +82,12 @@ func (p *BlockChain) SetBlock(prevHash prt.Hash, height uint64, proposer prt.Add
 			logger.Warn("[SetBlock] Failed to calculate fee for TX: ", utils.HashToString(tx.ID)[:16], " error: ", err)
 			invalidTxIds = append(invalidTxIds, tx.ID)
 			continue
+		}
+
+		// Mark UTXOs as used
+		for _, input := range tx.Inputs {
+			utxoKey := fmt.Sprintf("%s:%d", utils.HashToString(input.TxID), input.OutputIndex)
+			usedUTXOs[utxoKey] = true
 		}
 
 		totalFees += fee

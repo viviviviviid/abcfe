@@ -30,7 +30,8 @@ SystemAddresses = ["d79d745230218fc50118c59b0ee2c73934768a5f"]
 SystemBalances = [500000000]
 
 [server]
-RestPort = 8000
+RestPort = 8000           # 공개 API (0.0.0.0 - 외부 접근 가능)
+InternalRestPort = 8800   # 내부 API (127.0.0.1 - localhost만 접근)
 
 [p2p]
 Address = "0.0.0.0"

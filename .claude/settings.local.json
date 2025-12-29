@@ -59,7 +59,9 @@
       "Bash(git -C /Users/viviviviviid/go/src/github.com/abcfe/abcfe-node-newest diff HEAD~5 HEAD --name-only)",
       "Bash(mv:*)",
       "Bash(for:*)",
-      "Bash(do echo \"=== Port $port ===\" curl -s \"http://localhost:$port/api/v1/status\")"
+      "Bash(do echo \"=== Port $port ===\" curl -s \"http://localhost:$port/api/v1/status\")",
+      "Bash(git -C /Users/viviviviviid/go/src/github.com/abcfe/abcfe-node-newest log --oneline -20 --all -- \"*.go\")",
+      "Bash(git -C /Users/viviviviviid/go/src/github.com/abcfe/abcfe-node-newest diff HEAD~10 HEAD -- api/websocket.go api/rest/routes.go)"
     ],
     "deny": [],
     "ask": []

@@ -235,6 +235,7 @@ Timestamp = ${GENESIS_TIMESTAMP}
 
 [server]
 RestPort = 8000
+InternalRestPort = 8800
 
 [p2p]
 Address = "0.0.0.0"
@@ -295,6 +296,7 @@ Timestamp = ${GENESIS_TIMESTAMP}
 
 [server]
 RestPort = ${REST_PORT}
+InternalRestPort = $((REST_PORT + 800))
 
 [p2p]
 Address = "0.0.0.0"

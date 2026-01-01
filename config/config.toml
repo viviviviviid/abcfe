@@ -10,10 +10,10 @@ blockProducer = true
 path = "./log/syslogs/"
 maxAgeHour = 1440
 rotateHour = 24
-ProdTelKey = "https://api.telegram.org/bot7680194780:AAH8x_GSIdSlQIBcffSBPkxRvTr63ssrrbE/sendMessage"
-ProdChatId = -4572666133
-DevTelKey = "https://api.telegram.org/bot7821171888:AAH9oi3bI7M-rGZJvRM2J5h6vYXJ3KxqKf0/sendMessage"
-DevChatId = -4572666133
+ProdTelKey = ""
+ProdChatId = 0
+DevTelKey = ""
+DevChatId = 0
 
 [db]
 path = "./resource/db/"
@@ -26,12 +26,13 @@ protocol = "1.0.0"
 transaction = "1.0.0"
 
 [genesis]
-SystemAddresses = ["d79d745230218fc50118c59b0ee2c73934768a5f"]
+SystemAddresses = ["90efb3f6337ff1cc31398426ef62e4f48d9d73e6"]
 SystemBalances = [500000000]
+Timestamp = 1767253675
 
 [server]
-RestPort = 8000           # 공개 API (0.0.0.0 - 외부 접근 가능)
-InternalRestPort = 8800   # 내부 API (127.0.0.1 - localhost만 접근)
+RestPort = 8000
+InternalRestPort = 8800
 
 [p2p]
 Address = "0.0.0.0"
@@ -39,9 +40,17 @@ Port = 30303
 BootNodes = []
 
 [fee]
-minFee = 1000           # 최소 수수료 (1000 단위)
-blockReward = 50000000  # 블록 생성 보상 (50 토큰)
+minFee = 1
+blockReward = 50
 
 [transaction]
-maxMemoSize = 256       # 최대 메모 크기 (256 bytes)
-maxDataSize = 1024      # 최대 데이터 크기 (1 KB)
+maxMemoSize = 256
+maxDataSize = 1024
+
+[consensus]
+proposerSelection = "roundrobin"
+
+[validators]
+list = [
+  { address = "90efb3f6337ff1cc31398426ef62e4f48d9d73e6", publicKey = "3059301306072a8648ce3d020106082a8648ce3d03010703420004d587948801cbeed5b753cd999e9e09cf06c624acb2c9e93d8645daaf3a3ce00a4aa2933b12728a6b13e85f6a21ac42c189812d26b72193ae6caa9787d9b6a0e4", votingPower = 1000 }
+]

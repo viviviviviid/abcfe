@@ -73,7 +73,7 @@ IDLE ──▶ PROPOSING ──▶ PREVOTING ──▶ PRECOMMITTING ──▶ C
 ### Single Node (간단 시작)
 
 ```bash
-# 빌드 + 지갑 + 설정 + 노드 시작 (한 줄로!)
+# 빌드 + 지갑 + 설정 + 노드 시작 (한 줄로)
 ./scripts/start_single.sh
 
 # 백그라운드 실행
@@ -268,7 +268,6 @@ clean_all.sh        # 초기화
 
 | 문서 | 설명 |
 |------|------|
-| [CLAUDE.md](CLAUDE.md) | 개발자 가이드 (아키텍처, 코드 구조) |
 | [docs/QUICK_START.md](docs/QUICK_START.md) | 빠른 시작 가이드 |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | 전체 사용자 가이드 |
 | [docs/TX_GUIDE.md](docs/TX_GUIDE.md) | 트랜잭션 서명 가이드 |

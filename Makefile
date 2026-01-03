@@ -2,13 +2,14 @@
 
 # 바이너리 이름 설정
 BINARY_NAME=abcfed
+DASHBOARD_NAME=abcfe-dashboard
 VERSION=1.0.0
 BUILD_TIME=$(shell date +%FT%T%z)
 LDFLAGS=-ldflags "-X main.Version=${VERSION} -X main.BuildTime=${BUILD_TIME}"
 
 # 기본 타겟
 .PHONY: all
-all: build
+all: build build-dashboard
 
 # 빌드
 .PHONY: build
@@ -16,6 +17,13 @@ build:
 	@echo "Building ${BINARY_NAME}..."
 	go build ${LDFLAGS} -o ./${BINARY_NAME} cmd/node/main.go
 	@echo "Build complete: ./${BINARY_NAME}"
+
+# 대시보드 빌드
+.PHONY: build-dashboard
+build-dashboard:
+	@echo "Building ${DASHBOARD_NAME}..."
+	go build ${LDFLAGS} -o ./${DASHBOARD_NAME} cmd/dashboard/main.go
+	@echo "Build complete: ./${DASHBOARD_NAME}"
 
 # 개발용 빌드 (디버그 정보 포함)
 .PHONY: build-dev
@@ -38,6 +46,7 @@ build-release:
 clean:
 	@echo "Cleaning..."
 	rm -rf bin/
+	rm -f ${BINARY_NAME} ${DASHBOARD_NAME}
 	@echo "Clean complete"
 
 # 테스트
@@ -69,12 +78,13 @@ install:
 .PHONY: help
 help:
 	@echo "Available targets:"
-	@echo "  build        - Build the application"
-	@echo "  build-dev    - Build with debug information"
-	@echo "  build-release- Build for multiple platforms"
-	@echo "  clean        - Clean build artifacts"
-	@echo "  test         - Run tests"
-	@echo "  test-coverage- Run tests with coverage"
-	@echo "  run          - Run the application"
-	@echo "  install      - Install the application"
-	@echo "  help         - Show this help" 
+	@echo "  build          - Build the node application"
+	@echo "  build-dashboard- Build the dashboard TUI"
+	@echo "  build-dev      - Build with debug information"
+	@echo "  build-release  - Build for multiple platforms"
+	@echo "  clean          - Clean build artifacts"
+	@echo "  test           - Run tests"
+	@echo "  test-coverage  - Run tests with coverage"
+	@echo "  run            - Run the application"
+	@echo "  install        - Install the application"
+	@echo "  help           - Show this help" 
